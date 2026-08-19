@@ -237,6 +237,79 @@ def detection_radius_um(A_0_uv: float, d_0_um: float, threshold_uv: float) -> fl
     return float(d_0_um * np.sqrt(A_0_uv / threshold_uv - 1.0))
 
 
+def spike_amplitudes_uv(
+    neuron_x_um: np.ndarray,
+    neuron_y_um: np.ndarray,
+    config: ObservationConfig,
+    rng: np.random.Generator,
+) -> np.ndarray:
+    """Amplitude at each electrode for a spike from each neuron, ``(n_neurons, n_elec)``.
+
+    Includes the per-neuron amplitude scatter. That scatter is what produces the
+    heterogeneous rate distribution real arrays show -- a few hot electrodes and many
+    quiet ones (SPEC §6.1) -- because a neuron with weak coupling is invisible to
+    electrodes that a strongly-coupled neuron at the same distance would drive.
+    """
+    layout = config.layout
+    dx = np.asarray(neuron_x_um, dtype=np.float64)[:, None] - layout.x_um[None, :]
+    dy = np.asarray(neuron_y_um, dtype=np.float64)[:, None] - layout.y_um[None, :]
+    distance_squared = dx * dx + dy * dy
+
+    scale = np.ones((dx.shape[0], 1))
+    if config.per_neuron_sigma > 0:
+        # Lognormal with unit median: the median neuron keeps A_0 exactly.
+        scale = np.exp(rng.normal(0.0, config.per_neuron_sigma, size=(dx.shape[0], 1)))
+    return config.A_0_uv * scale / (1.0 + distance_squared / (config.d_0_um**2))
+
+
+def detection_probabilities(amplitudes_uv: np.ndarray, config: ObservationConfig) -> np.ndarray:
+    """Per-spike detection probability for each (neuron, electrode) pair.
+
+    A spike is detected when ``A + noise > k * rms`` with ``noise ~ N(0, rms)``
+    (SPEC §5.3-5.4). Integrating that noise analytically gives
+    ``p = Phi((A - k*rms) / rms)``, which is exactly equivalent to drawing a noise
+    sample per spike per electrode but costs one evaluation per *pair* instead of one
+    per spike -- the difference between a usable observation model and 90 million
+    Gaussian draws for a single 300 s run.
+    """
+    from scipy.stats import norm
+
+    return norm.sf((config.threshold_uv - amplitudes_uv) / config.noise_rms_uv)
+
+
+def apply_dead_time(times_s: np.ndarray, dead_time_s: float) -> np.ndarray:
+    """Greedily thin a sorted spike train to respect a detector dead time.
+
+    Boolean mask of kept spikes. Inherently sequential -- whether a spike is kept
+    depends on which previous spikes were kept -- so this is a scan, not a diff.
+    """
+    if dead_time_s <= 0 or times_s.size == 0:
+        return np.ones(times_s.size, dtype=bool)
+    keep = np.zeros(times_s.size, dtype=bool)
+    last_accepted = -np.inf
+    for index, time_s in enumerate(times_s):
+        if time_s - last_accepted >= dead_time_s:
+            keep[index] = True
+            last_accepted = time_s
+    return keep
+
+
+def select_dead_electrodes(config: ObservationConfig, rng: np.random.Generator) -> np.ndarray:
+    """Indices of broken electrodes (SPEC §5.6)."""
+    n_electrodes = config.layout.n_electrodes
+    if config.dead_electrode_indices is not None:
+        dead = np.asarray(config.dead_electrode_indices, dtype=np.int64)
+        if dead.size and (dead.min() < 0 or dead.max() >= n_electrodes):
+            raise ValueError(
+                f"dead electrode index out of range for a {n_electrodes}-electrode layout"
+            )
+        return np.unique(dead)
+    n_dead = int(round(config.dead_electrode_fraction * n_electrodes))
+    if n_dead == 0:
+        return np.array([], dtype=np.int64)
+    return np.sort(rng.choice(n_electrodes, size=n_dead, replace=False))
+
+
 def observe(
     spike_times_s: np.ndarray,
     spike_neuron_ids: np.ndarray,
@@ -253,5 +326,116 @@ def observe(
 
     Returns a recording with ``n_channels == config.layout.n_electrodes``. Everything
     downstream sees only this.
+
+    Note what this does to the spike count, since it is the point rather than a side
+    effect: a neuron close to several electrodes is counted on each of them, one
+    electrode near several neurons merges their trains into one, and neurons outside
+    every electrode's detection radius are never seen at all.
     """
-    raise NotImplementedError("Task 2 (SPEC §5)")
+    spike_times_s = np.asarray(spike_times_s, dtype=np.float64)
+    spike_neuron_ids = np.asarray(spike_neuron_ids, dtype=np.int64)
+    neuron_x_um = np.asarray(neuron_x_um, dtype=np.float64)
+    neuron_y_um = np.asarray(neuron_y_um, dtype=np.float64)
+
+    if spike_times_s.size != spike_neuron_ids.size:
+        raise ValueError(
+            f"got {spike_times_s.size} spike times for {spike_neuron_ids.size} neuron ids"
+        )
+    if neuron_x_um.size != neuron_y_um.size:
+        raise ValueError("neuron x and y arrays must have the same length")
+    n_neurons = neuron_x_um.size
+    if spike_neuron_ids.size and (
+        spike_neuron_ids.min() < 0 or spike_neuron_ids.max() >= n_neurons
+    ):
+        raise ValueError("spike neuron ids fall outside the supplied positions")
+
+    layout = config.layout
+    dead = select_dead_electrodes(config, rng)
+    alive = np.setdiff1d(np.arange(layout.n_electrodes), dead)
+
+    probability = detection_probabilities(
+        spike_amplitudes_uv(neuron_x_um, neuron_y_um, config, rng), config
+    )
+    probability[:, dead] = 0.0
+
+    # Split pairs by certainty so the Bernoulli draws are only made where they can
+    # change the outcome. CERTAIN is not "close to 1" for its own sake: at p > 1-1e-9 a
+    # 300 s run would expect fewer than one missed detection.
+    CERTAIN, IMPOSSIBLE = 1.0 - 1e-9, 1e-9
+    per_neuron_spikes = _group_by_neuron(spike_times_s, spike_neuron_ids, n_neurons)
+
+    detected_channels: list[np.ndarray] = []
+    detected_times: list[np.ndarray] = []
+    for neuron in range(n_neurons):
+        times = per_neuron_spikes[neuron]
+        if times.size == 0:
+            continue
+        row = probability[neuron]
+        certain = np.flatnonzero(row >= CERTAIN)
+        uncertain = np.flatnonzero((row > IMPOSSIBLE) & (row < CERTAIN))
+
+        if certain.size:
+            detected_channels.append(np.repeat(certain, times.size))
+            detected_times.append(np.tile(times, certain.size))
+        if uncertain.size:
+            hits = rng.random((uncertain.size, times.size)) < row[uncertain][:, None]
+            rows, cols = np.nonzero(hits)
+            detected_channels.append(uncertain[rows])
+            detected_times.append(times[cols])
+
+    if detected_times:
+        channels = np.concatenate(detected_channels).astype(np.int32)
+        times = np.concatenate(detected_times).astype(np.float64)
+    else:
+        channels = np.array([], dtype=np.int32)
+        times = np.array([], dtype=np.float64)
+
+    # Dead time is per electrode, so sort by channel then time and scan each block.
+    order = np.lexsort((times, channels))
+    channels, times = channels[order], times[order]
+    dead_time_s = config.dead_time_ms / 1000.0
+    if dead_time_s > 0 and times.size:
+        bounds = np.searchsorted(channels, np.arange(layout.n_electrodes + 1))
+        keep = np.zeros(times.size, dtype=bool)
+        for electrode in range(layout.n_electrodes):
+            lo, hi = bounds[electrode], bounds[electrode + 1]
+            if hi > lo:
+                keep[lo:hi] = apply_dead_time(times[lo:hi], dead_time_s)
+        channels, times = channels[keep], times[keep]
+
+    # SpikeRecording requires ascending times across the whole array.
+    order = np.argsort(times, kind="stable")
+
+    full_metadata: dict[str, Any] = {
+        "observation": layout.name,
+        "n_neurons_simulated": int(n_neurons),
+        "n_neuron_spikes": int(spike_times_s.size),
+        "dead_electrodes": dead.tolist(),
+        "n_alive_electrodes": int(alive.size),
+        "noise_rms_uv": config.noise_rms_uv,
+        "threshold_uv": config.threshold_uv,
+        "detection_radius_um": config.detection_radius_um,
+        "dead_time_ms": config.dead_time_ms,
+        **layout.to_metadata(),
+    }
+    if metadata:
+        full_metadata.update(metadata)
+
+    return SpikeRecording(
+        times=times[order],
+        channels=channels[order],
+        n_channels=layout.n_electrodes,
+        duration=float(duration_s),
+        source=source,
+        metadata=full_metadata,
+    )
+
+
+def _group_by_neuron(
+    times_s: np.ndarray, neuron_ids: np.ndarray, n_neurons: int
+) -> list[np.ndarray]:
+    """Spike times per neuron, each ascending."""
+    order = np.lexsort((times_s, neuron_ids))
+    sorted_ids, sorted_times = neuron_ids[order], times_s[order]
+    bounds = np.searchsorted(sorted_ids, np.arange(n_neurons + 1))
+    return [sorted_times[bounds[n] : bounds[n + 1]] for n in range(n_neurons)]

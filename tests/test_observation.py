@@ -117,15 +117,19 @@ def test_invalid_observation_config_is_rejected(field: str, value: float, match:
         ObservationConfig(layout=layout, **{field: value})
 
 
-def test_observe_is_not_implemented_yet() -> None:
-    """Task 2. Fails loudly rather than returning neuron-level data (SPEC §5, §14)."""
-    with pytest.raises(NotImplementedError, match="Task 2"):
-        observe(
-            np.array([0.1]),
-            np.array([0]),
-            np.array([0.0]),
-            np.array([0.0]),
-            1.0,
-            ObservationConfig.load("observation.yaml"),
-            np.random.default_rng(0),
-        )
+def test_observe_output_writes_cl_h5_that_sdk_can_open(tmp_path) -> None:
+    from culturesim.interop.cl_analysis import recording_view
+
+    recording = observe(
+        np.array([0.1, 0.2, 0.3]),
+        np.array([0, 0, 0]),
+        np.array([0.0]),
+        np.array([0.0]),
+        1.0,
+        ObservationConfig.load("observation.yaml"),
+        np.random.default_rng(0),
+    )
+    path = recording.to_hdf5(tmp_path / "observed.h5")
+    with recording_view(path) as view:
+        assert view.attributes.channel_count == 64
+        assert len(view.spikes) == recording.n_spikes
