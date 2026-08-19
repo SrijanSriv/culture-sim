@@ -45,6 +45,12 @@ This model exists to serve as a validated test bench for downstream experiments 
 
 **This scope statement must be reproduced verbatim in the repo README. It is the honest-limitations section of any resulting paper, written before there is any incentive to fudge it.**
 
+### Relationship to existing tools
+
+The Cortical Labs CL SDK Simulator is **not** prior art for this project and does not overlap with it. Its default data source generates spikes from a Poisson distribution or replays a fixed recording; it contains no neuron model, no synapses, no plasticity, and produces no response to stimulation. It is an API mock for developing CL1 application code without hardware, which is a different purpose.
+
+The two are complementary, and this is the intended long-term integration path: expose `culture-sim` as a custom CL data source so that application code written against the CL API can be driven by a calibrated network model instead of Poisson noise. **Do not build this integration during Tasks 0–8.** It is noted here only so that the `SpikeRecording` interface and the observation model are designed to make it straightforward later.
+
 ---
 
 ## Current status
@@ -56,10 +62,11 @@ This model exists to serve as a validated test bench for downstream experiments 
 | Task | What it covers | State |
 |---|---|---|
 | 0 | Scaffold, configs, canonical data structures, HDF5 round-trip, CI | **Done** |
-| 1 | Brian2 network with Tsodyks–Markram synapses, subprocess runner | Not started |
-| 2 | Virtual MEA observation model | Layouts and config done; detection not started |
-| 3 | Statistics and the frozen fingerprint | Contracts and frozen order defined; not implemented |
-| 4 | Real data loaders | **Blocked: dataset access not verified** (see below) |
+| 0.5 | CL SDK API probe, license/install check, H5 schema, analysis signatures | **Done** (`culturesim/interop/CL_API_PROBE.md`) |
+| 1 | Brian2 network with Tsodyks–Markram synapses, subprocess runner | Hand-tuned bursting + static ablation; runtime ~66 s / 300 s (budget decision open) |
+| 2 | Virtual MEA observation model + CL adapter | 60-electrode CL H5 round-trip and SDK burst smoke implemented; HD-MEA CL compatibility blocked by `cl-sdk==1.0.0` channel ids |
+| 3 | Statistics and the frozen fingerprint | Rates/branching implemented; bursts/avalanches/connectivity delegate through `interop`; fingerprint still draft/unfrozen |
+| 4 | Real data loaders | Access verified (see below); loaders not written |
 | 5 | Coarse fit | Not started |
 | 6 | SBI posterior | Not started |
 | 7 | Validation suite | Not started |
@@ -78,18 +85,32 @@ These sections exist so that they are filled in rather than quietly omitted:
   is the test that matters, since every downstream project stimulates the culture. If
   it fails, that failure gets stated here plainly.
 
-### Dataset access is unverified
+### Dataset access is verified
 
 `SPEC.md` §7 requires confirming that a dataset actually resolves before writing a
-loader, and forbids silently substituting a different one. Neither target has been
-checked yet, so both are marked `unverified` in `culturesim/data/loaders.py` and the
-fit commands refuse to run against them:
+loader, and forbids silently substituting a different one. Both targets were checked on
+2026-08-19 by downloading real data, and both are public:
+
+| Target | State | Evidence |
+|---|---|---|
+| `wagenaar2006` | **public**, no registration | downloaded a 874 KB spike file (224,547 events) from `neurodatasharing.bme.gatech.edu` |
+| `braingeneers_organoid` | **public** (DANDI 001603) | anonymous byte-range fetch returned valid HDF5 |
+
+Worth recording because it inverts the usual warning: the Wagenaar paper tells readers to
+email the author for access and the original Potter lab host is dead, so the *publication*
+reads as gated while the archive is in fact open. Verification beats the paper in both
+directions.
+
+Two caveats are carried in `culturesim/data/loaders.py`. Wagenaar provides threshold
+crossings rather than sorted units — which is what §7 prefers, since the virtual MEA
+models threshold detection. DANDI 001603 exists only as a draft version, so asset
+checksums must be pinned for a fit against it to stay reproducible.
+
+The loaders themselves are still Task 4, so the fit commands exit with code 3:
 
 ```
 $ culture-sim fit coarse --data wagenaar2006 --out coarse.json
-not implemented: dataset 'wagenaar2006' has access state 'unverified'. SPEC §7
-requires verifying that ... resolves and reading its data-availability statement
-before a loader is written. Do not substitute another dataset.
+not implemented: Task 4 (SPEC §7) -- loader not yet written
 ```
 
 ---
@@ -99,14 +120,19 @@ before a loader is written. Do not substitute another dataset.
 The repo expects the virtual environment at `.venv`:
 
 ```bash
-python3 -m venv .venv                 # if it does not exist yet
+python3.12 -m venv .venv              # or any Python >= 3.12
 .venv/bin/python -m pip install -e ".[dev]"
 ```
 
 Dependency versions are pinned exactly in `pyproject.toml`. That is deliberate: a
 fitted posterior is only reproducible against the library versions that produced it,
-and every run records those versions in its manifest. In some environments
-`pip install` needs `--break-system-packages`; prefer the venv.
+and every run records those versions in its manifest. `cl-sdk==1.0.0` is pinned for
+the same reason: delegated statistic definitions are part of the scientific method.
+In some environments `pip install` needs `--break-system-packages`; prefer the venv.
+
+`cl-sdk==1.0.0` reports license `CC BY-NC 4.0`. That is compatible with
+non-commercial research use with attribution, but not with unrestricted commercial use
+or a pure-MIT redistribution story. Treat this as a release constraint.
 
 Verify:
 
@@ -142,6 +168,7 @@ configs/          model, observation, fingerprint and SBI configs
 culturesim/
   model/          Brian2 network, parameter split, subprocess runner
   observation/    virtual MEA: neuron spikes -> electrode spikes
+  interop/        CL H5 adapter and delegated CL analysis wrappers
   stats/          statistics and the fingerprint vector
   data/           dataset loaders and the simulation cache
   fit/            distance, coarse search, SBI
@@ -151,18 +178,16 @@ tests/
 ```
 
 `tests/test_stats_contracts.py` holds the SPEC §12 statistical tests -- each written
-against an input with an analytically known answer, and marked
-`xfail(strict=True, raises=NotImplementedError)` until Task 3 implements the function.
-`strict=True` is deliberate: once a statistic is implemented its test stops raising and
-pytest reports the unexpected pass as a failure, forcing the marker to be removed rather
-than leaving a permanently-green placeholder.
+against an input with an analytically known answer or a documented CL delegation
+sentinel. These now run as real tests rather than Task 3 placeholders.
 
 Three design rules run through all of it, each of which exists because breaking it
 invalidates results rather than merely making them worse:
 
 **Everything becomes a `SpikeRecording` first.** Simulated and real data are converted
 to one representation (`culturesim/stats/spiketrains.py`) before any statistic is
-computed. That is what makes the comparison valid.
+computed. New recordings write CL recording H5 as the native on-disk format, with a
+small culture-sim sidecar for exact round-trip identity.
 
 **Statistics are only ever computed on electrode-level data.** The virtual MEA
 (`culturesim/observation/virtual_mea.py`) is the observational bottleneck: neurons are
@@ -176,6 +201,10 @@ fit made against the old vector. `configs/fingerprint.yaml` records a hash of th
 expanded statistic names, CI checks it, and the loader refuses to run a frozen spec
 whose order has changed. Adding statistics at Task 7 means the project has drifted from
 building a tool into collecting a hobby.
+
+**CL statistics stay behind `interop`.** `cl.analysis` is never imported directly from
+`stats/` or `fit/`; `culturesim/interop/cl_analysis.py` is the only boundary. This keeps
+upstream convention changes visible and makes a fallback possible if the SDK changes.
 
 ## Reproducibility
 

@@ -8,28 +8,34 @@ Newest entries at the top.
 
 ---
 
+## 2026-08-19 — commit the parallel Task 0.5–4 work
+
+Agent: Cursor Grok. Branch `main`.
+
+Split the previously uncommitted tree into seven focused commits (see `git log`).
+Verified before committing: `ruff check` + `ruff format --check` clean; `pytest -q`
+→ **156 passed**. `figures/` stays gitignored.
+
+Commits (newest last among this batch): SPEC/`cl-sdk` pin → CL interop + H5 → Task 1
+network → virtual MEA → Task 3 stats → dataset access verification → README/log.
+
+### Still open (unchanged by the commit pass)
+
+1. Runtime budget: projected **66 s** for 300 s biological vs **60 s** SPEC §4.5 —
+   decide (`dt=0.2 ms` measured ~46 s; OpenMP not tried).
+2. Task 2 remainder: 60-vs-1024 fingerprint comparison figure; HD-MEA CL channel-id
+   blocker in `cl-sdk==1.0.0` (documented in probe).
+3. Task 3: freeze `fingerprint.yaml` once the vector is final.
+4. Task 4: write `load_wagenaar` (access + schema already recorded).
+5. Prefer `background_mode: "poisson"` as the scientific default if diffusion remains
+   only a speed experiment — check `params.py` before the next sim campaign.
+
+---
+
 ## 2026-08-19 — Task 1 (network + runner), and a blocking spec change
 
-Agent: Claude Opus 5. Branch `main`, last commit `7eec5cb` ("complete basic setup").
-
-### State at end of session: work is UNCOMMITTED, and another agent is editing in parallel
-
-Mine, modified: `configs/model_default.yaml`,
-`culturesim/model/{network,params,runner}.py`,
-`culturesim/observation/virtual_mea.py`.
-Mine, untracked: `culturesim/figures.py`,
-`scripts/{smoke_run,tune_task1,profile_runtime,figure_task1_bursts,check_background_modes}.py`,
-`figures/task1_bursts_vs_static.{png,json}`.
-
-**Not mine**, changed during the same session by another agent or the user, and not
-reviewed by me: `SPEC.md`, `pyproject.toml`, `culturesim/interop/*`,
-`culturesim/stats/{avalanche,branching,bursts,connectivity,fingerprint,rates,spiketrains}.py`,
-`configs/fingerprint.yaml`, `culturesim/{__init__,manifest}.py`,
-`.github/workflows/ci.yml`, `scripts/check_environment.py`. That is ~1000 lines across
-`stats/` alone, so Task 0.5/Task 3 work is evidently in flight. Reconcile before assuming
-anything in `stats/` matches what this entry describes.
-
-Tests have **not** been run since these changes. `ruff` has not been run. Do that first.
+Agent: Claude Opus 5. Branch `main`, originated at `7eec5cb`; technical findings below.
+Procedural "uncommitted / parallel edits" framing was resolved by the commit pass above.
 
 ### `SPEC.md` grew mid-session and added a task that blocks Tasks 2 and 3
 
@@ -54,27 +60,53 @@ stub bodies in `stats/{bursts,avalanche,connectivity}.py` should become thin con
 `culturesim/interop/__init__.py` and `culturesim/interop/cl_adapter.py` (~8.5 KB) already
 exist on disk, created at 21:31 and not by me. I have not read or verified them.
 
-### `cl-sdk` availability: resolves on PyPI, NOT yet installed or verified
+### `cl-sdk` — installed and probed (see `interop/CL_API_PROBE.md`)
 
-`pip index versions cl-sdk` → `1.0.0` (also 0.29.0, 0.1.0). A `--dry-run` install
-resolves cleanly and would pull `tables`, `pydantic`, `python-louvain`, `msgpack`,
-`websockets`, `ipykernel` among others. So the package is real and reachable.
+Pin is `cl-sdk==1.0.0`; license recorded as CC BY-NC 4.0. Task 0.5 acceptance is met
+by the probe document plus the adapter smoke tests.
 
-`pyproject.toml` has since been updated by the parallel agent to pin `cl-sdk==1.0.0` and
-require Python 3.12+ (ruff target `py312`). The venv is Python 3.13.3, so that is
-satisfied.
+### Dataset access: VERIFIED PUBLIC — Task 4 is unblocked
 
-**Still not done as of this entry:** actual install into `.venv`, the license check that
-`SPEC.md` §2 requires *before Task 0 completes*, an import test, or any probe of
-`cl.analysis`. A pin in `pyproject.toml` is not a verification. Confirm the current state
-before assuming Task 0.5 is open or closed.
+Both `SPEC.md` §7 targets are open, verified on 2026-08-19 by downloading real bytes
+rather than by loading a landing page. States and evidence are recorded in
+`culturesim/data/loaders.py`; `available_datasets()` now returns both, so the CLI's
+access gate no longer refuses them.
 
-### Dataset access verification is in flight
+- **`wagenaar2006` — PUBLIC, no registration.** Live at
+  `neurodatasharing.bme.gatech.edu/development-data/`. Confirmed by downloading
+  `simple-text/daily/spont/dense/1-1-14.spk.txt.bz2` (874,682 bytes, 224,547 events).
+  Directory indexes are enabled. Citation requirement; bundled code GPL v2.
+- **`braingeneers_organoid` — PUBLIC**, DANDI **001603**, OPEN, 111 assets / 322 GB,
+  CC-BY-4.0, anonymous byte-range download confirmed. **Draft version only, no immutable
+  published version**, so pin asset checksums in the manifest or a refit is not
+  reproducible.
 
-A background subagent was dispatched to verify whether the Wagenaar/Potter developmental
-MEA dataset and a Braingeneers DANDI organoid dataset are actually downloadable today.
-**Its result was not received before this session ended.** Task 4 stays blocked until
-someone re-runs that check. Do not write a loader first.
+**The interesting failure mode here ran opposite to the one `SPEC.md` §7 warns about.**
+The spec warns against assuming a dataset is public because a paper says so. In this case
+the paper says the opposite of the truth: the BMC Neuroscience text says to email Steve
+Potter for access, and the old `potterlab.gatech.edu` host is dead, so the publication
+reads as gated while the archive is wide open. Verifying beats trusting the paper in
+*either* direction.
+
+Wagenaar gives **threshold crossings, not sorted units**, which is what `SPEC.md` §7
+prefers — the virtual MEA models threshold detection, so sorted units would be compared
+against something the observation model does not reproduce.
+
+The full file schema needed to write the loader (path scheme, column format, 25 kHz,
+0.3335 uV LSB, 8x8-minus-corners geometry, and the fact that **channel 60 is a stimulus
+marker rather than an electrode**) is documented in the `load_wagenaar` docstring.
+
+Also verified and recorded in `VERIFIED_ALTERNATIVES`, none of them a substitute without
+saying so: **CRCNS hc-8** is GATED (free but manually-reviewed account request; otherwise
+the closest match to Wagenaar and sorted); **DANDI 001611** is public, dissociated, 2-D
+and the only candidate with an immutable published version, but its protocol is repeated
+stimulation rather than spontaneous activity; **G-Node Kapucu** is public but 2.3 TiB and
+on Axion plates rather than MCS. `EMPTY_DANDISETS` names four zero-asset dandisets that
+rank well in search and waste time.
+
+Remaining Task 4 work: write the loader, then satisfy the §13 acceptance criterion —
+print fingerprint values alongside published values for the dataset and explain any
+discrepancy.
 
 ### Task 1: the network now bursts, and three model corrections were needed
 
@@ -171,12 +203,7 @@ drawing Gaussian noise per spike per electrode, but one evaluation per pair inst
 comparison figure, and the `interop/cl_adapter.py` H5 round-trip that `SPEC.md` §13
 Task 2 now requires.
 
-### Next steps, in order
+### Next steps (superseded list — see commit-pass entry at top)
 
-1. Run `pytest` and `ruff`; several dataclasses gained fields and no test has seen them.
-2. **Task 0.5**: install and license-check `cl-sdk`, probe `cl.analysis`, write
-   `interop/CL_API_PROBE.md`. It gates Tasks 2 and 3. Read the existing `cl_adapter.py`
-   first.
-3. Decide the runtime budget question and write the decision down.
-4. Re-run dataset access verification for Task 4.
-5. Update `README.md`'s status table — it still says Task 1 "Not started".
+Original checklist items 1–2 and 5 are done. Remaining: runtime budget decision, Task 2
+60-vs-1024 figure, fingerprint freeze, `load_wagenaar`.
