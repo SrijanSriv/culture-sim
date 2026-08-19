@@ -196,19 +196,36 @@ def _cmd_fingerprint(args: argparse.Namespace) -> int:
 def _load_target_fingerprint(data: str) -> Any:
     """Resolve ``--data`` to a real fingerprint (Task 4).
 
-    Both fit stages need this first, and SPEC §7 forbids writing a loader before the
-    dataset's access has actually been verified -- so this is where that check reports.
+    A path that exists is loaded directly. A dataset key goes through the verified
+    loader; missing local bytes are a usage error, not an unimplemented task.
     """
-    from .data.loaders import DATASETS
+    from .data.loaders import DATASETS, load_wagenaar
+    from .stats.fingerprint import compute_fingerprint
+    from .stats.spiketrains import load_recording
+
+    path = Path(data)
+    if path.exists():
+        suffix = path.name.lower()
+        if suffix.endswith(".h5") or suffix.endswith(".hdf5"):
+            recording = load_recording(path)
+        else:
+            recording = load_wagenaar(path)
+        return compute_fingerprint(recording)
 
     info = DATASETS.get(data)
-    if info is not None and info.access != "public":
+    if info is None:
+        raise FileNotFoundError(f"unknown dataset or missing file: {data}")
+    if info.access != "public":
         raise NotImplementedError(
             f"dataset {data!r} has access state {info.access!r}. SPEC §7 requires "
             f"verifying that {info.url} resolves and reading its data-availability "
             "statement before a loader is written. Do not substitute another dataset."
         )
-    raise NotImplementedError(f"Task 4 (SPEC §7) -- loading {data!r} into a SpikeRecording")
+    if data == "wagenaar2006":
+        return compute_fingerprint(load_wagenaar())
+    raise NotImplementedError(
+        f"loader for {data!r} is not written; Wagenaar is the Task 4 fitting target"
+    )
 
 
 def _cmd_fit_coarse(args: argparse.Namespace) -> int:

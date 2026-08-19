@@ -55,7 +55,7 @@ The two are complementary, and this is the intended long-term integration path: 
 
 ## Current status
 
-**Tasks 0–3 are complete. Nothing has been fitted, and no claim in `SPEC.md`
+**Tasks 0–4 are complete. Nothing has been fitted, and no claim in `SPEC.md`
 §15 is yet supported by evidence.** The table below is the honest state of the build;
 `SPEC.md` §13 has the acceptance criterion for each task.
 
@@ -66,7 +66,7 @@ The two are complementary, and this is the intended long-term integration path: 
 | 1 | Brian2 network with Tsodyks–Markram synapses, subprocess runner | **Done** (300 s biological in 53.7 s wall-clock; poisson drive; `dt=0.2` ms) |
 | 2 | Virtual MEA observation model + CL adapter | **Done** (60-vs-1024 figure; dead electrodes; HD-MEA CL stats blocked by `cl-sdk==1.0.0` uint8 channel ids) |
 | 3 | Statistics and the frozen fingerprint | **Done** (66 statistics, version 1.0.0, hash `603d25df56e7`) |
-| 4 | Real data loaders | Access verified (see below); loaders not written |
+| 4 | Real data loaders | **Done** (`load_wagenaar`; 1-1-14 yields a complete 66-stat fingerprint; CL vs Wagenaar burst defs disagree — see below) |
 | 5 | Coarse fit | Not started |
 | 6 | SBI posterior | Not started |
 | 7 | Validation suite | Not started |
@@ -106,11 +106,34 @@ crossings rather than sorted units — which is what §7 prefers, since the virt
 models threshold detection. DANDI 001603 exists only as a draft version, so asset
 checksums must be pinned for a fit against it to stay reproducible.
 
-The loaders themselves are still Task 4, so the fit commands exit with code 3:
+`load_wagenaar` is in. Fetch the default DIV-14 recording (gitignored under
+`data/raw/`) with `.venv/bin/python scripts/fetch_wagenaar.py`, then
+`.venv/bin/python scripts/compare_wagenaar.py`. Measured on
+`simple-text/daily/spont/dense/1-1-14.spk.txt.bz2` (224,547 events):
+
+| statistic | this file | published / expected | note |
+|---|---|---|---|
+| duration | 2716 s | ~1800 s daily session | archive file is 45 min; loader keeps last-spike time |
+| n_channels | 60 | 60 | ok |
+| rate mean | 1.38 Hz/electrode | order-1 Hz at dense DIV 14 | ok |
+| active electrodes | 0.93 | most participate after two weeks | ok |
+| burst rate | 126.7 / min | bursting after two weeks | CL 50 ms / 3 Hz bins fragment events |
+| median IBI | 0.30 s | 1–300 s (Wagenaar 2006 abstract) | same detector mismatch |
+| burst duration | 0.42 s | ~1 s at onset, <0.2 s after DIV 20 | in range for DIV 14 |
+| fingerprint | 66/66 defined | complete | Task 4 acceptance |
+
+The IBI mismatch is a methods discrepancy, not a misread file. Fingerprint
+bursts are CL `analyse_network_bursts`; Wagenaar's published 1–300 s range
+uses their detector. SPEC §6.0 forbids silently substituting ours. Channel
+count, DIV metadata from the filename, and a complete fingerprint are the
+loader checks. `load_dandi_nwb` stays unimplemented: DANDI 001603 is the
+3-D comparison point, not the fitting target.
+
+Fit commands now reach Task 5:
 
 ```
 $ culture-sim fit coarse --data wagenaar2006 --out coarse.json
-not implemented: Task 4 (SPEC §7) -- loader not yet written
+not implemented: Task 5 (SPEC §8.2)
 ```
 
 ---

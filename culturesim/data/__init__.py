@@ -3,6 +3,12 @@
 from __future__ import annotations
 
 from .cache import SimulationCache
-from .loaders import DATASETS, DatasetInfo, available_datasets
+from .loaders import DATASETS, DatasetInfo, available_datasets, load_wagenaar
 
-__all__ = ["DATASETS", "DatasetInfo", "SimulationCache", "available_datasets"]
+__all__ = [
+    "DATASETS",
+    "DatasetInfo",
+    "SimulationCache",
+    "available_datasets",
+    "load_wagenaar",
+]
