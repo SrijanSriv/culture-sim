@@ -12,14 +12,22 @@ Newest entries at the top.
 
 Agent: Claude Opus 5. Branch `main`, last commit `7eec5cb` ("complete basic setup").
 
-### State at end of session: work is UNCOMMITTED
+### State at end of session: work is UNCOMMITTED, and another agent is editing in parallel
 
-Modified: `SPEC.md` (not by me — see below), `configs/model_default.yaml`,
+Mine, modified: `configs/model_default.yaml`,
 `culturesim/model/{network,params,runner}.py`,
 `culturesim/observation/virtual_mea.py`.
-New and untracked: `culturesim/figures.py`, `culturesim/interop/` (not by me),
+Mine, untracked: `culturesim/figures.py`,
 `scripts/{smoke_run,tune_task1,profile_runtime,figure_task1_bursts,check_background_modes}.py`,
 `figures/task1_bursts_vs_static.{png,json}`.
+
+**Not mine**, changed during the same session by another agent or the user, and not
+reviewed by me: `SPEC.md`, `pyproject.toml`, `culturesim/interop/*`,
+`culturesim/stats/{avalanche,branching,bursts,connectivity,fingerprint,rates,spiketrains}.py`,
+`configs/fingerprint.yaml`, `culturesim/{__init__,manifest}.py`,
+`.github/workflows/ci.yml`, `scripts/check_environment.py`. That is ~1000 lines across
+`stats/` alone, so Task 0.5/Task 3 work is evidently in flight. Reconcile before assuming
+anything in `stats/` matches what this entry describes.
 
 Tests have **not** been run since these changes. `ruff` has not been run. Do that first.
 
@@ -52,12 +60,14 @@ exist on disk, created at 21:31 and not by me. I have not read or verified them.
 resolves cleanly and would pull `tables`, `pydantic`, `python-louvain`, `msgpack`,
 `websockets`, `ipykernel` among others. So the package is real and reachable.
 
-**Not done:** actual install, license check (`SPEC.md` §2 requires verifying the license
-permits this use *before Task 0 completes*), import test, or any probe of `cl.analysis`.
-Treat Task 0.5 as not started.
+`pyproject.toml` has since been updated by the parallel agent to pin `cl-sdk==1.0.0` and
+require Python 3.12+ (ruff target `py312`). The venv is Python 3.13.3, so that is
+satisfied.
 
-Note a live conflict: `pyproject.toml` says `requires-python = ">=3.11"` and the venv is
-Python 3.13.3, but `SPEC.md` §2 now says 3.12+. The venv is fine; the pin is stale.
+**Still not done as of this entry:** actual install into `.venv`, the license check that
+`SPEC.md` §2 requires *before Task 0 completes*, an import test, or any probe of
+`cl.analysis`. A pin in `pyproject.toml` is not a verification. Confirm the current state
+before assuming Task 0.5 is open or closed.
 
 ### Dataset access verification is in flight
 
