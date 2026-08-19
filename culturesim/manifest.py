@@ -30,6 +30,7 @@ TRACKED_PACKAGES = (
     "scipy",
     "pandas",
     "matplotlib",
+    "cl-sdk",
     "sbi",
     "torch",
     "powerlaw",

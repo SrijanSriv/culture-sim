@@ -37,6 +37,12 @@ This model exists to serve as a validated test bench for downstream experiments 
 
 **This scope statement must be reproduced verbatim in the repo README. It is the honest-limitations section of any resulting paper, written before there is any incentive to fudge it.**
 
+### Relationship to existing tools
+
+The Cortical Labs CL SDK Simulator is **not** prior art for this project and does not overlap with it. Its default data source generates spikes from a Poisson distribution or replays a fixed recording; it contains no neuron model, no synapses, no plasticity, and produces no response to stimulation. It is an API mock for developing CL1 application code without hardware, which is a different purpose.
+
+The two are complementary, and this is the intended long-term integration path: expose `culture-sim` as a custom CL data source so that application code written against the CL API can be driven by a calibrated network model instead of Poisson noise. **Do not build this integration during Tasks 0–8.** It is noted here only so that the `SpikeRecording` interface and the observation model are designed to make it straightforward later.
+
 ---
 
 ## 1. Repository Layout
@@ -58,13 +64,17 @@ culture-sim/
 │   │   └── runner.py          # subprocess-isolated simulation execution
 │   ├── observation/
 │   │   └── virtual_mea.py     # neuron -> electrode observation model
+│   ├── interop/
+│   │   ├── cl_adapter.py      # SpikeRecording <-> CL recording (H5)
+│   │   ├── cl_analysis.py     # thin wrappers over cl.analysis
+│   │   └── CL_API_PROBE.md    # written by Task 0.5; ground truth for the API
 │   ├── stats/
 │   │   ├── spiketrains.py     # canonical spike data structures
 │   │   ├── rates.py
-│   │   ├── bursts.py
-│   │   ├── avalanche.py
-│   │   ├── branching.py
-│   │   ├── connectivity.py
+│   │   ├── bursts.py          # delegates to cl.analysis where possible
+│   │   ├── avalanche.py       # delegates to cl.analysis where possible
+│   │   ├── branching.py       # ours: MR estimator, not in cl.analysis
+│   │   ├── connectivity.py    # delegates to cl.analysis where possible
 │   │   └── fingerprint.py     # assembles the full vector
 │   ├── data/
 │   │   ├── loaders.py         # real dataset -> canonical format
@@ -86,14 +96,21 @@ culture-sim/
 
 ## 2. Environment
 
-- Python 3.11+
+**Python 3.12+ is required** (not 3.11) — `cl-sdk` requires 3.12 or later, and this project depends on it.
+
+Core:
 - `brian2`, `numpy`, `scipy`, `pandas`, `matplotlib`
+- `cl-sdk` (Cortical Labs CL API Simulator — github.com/Cortical-Labs/cl-sdk)
 - `sbi` (simulation-based inference), `torch`
 - `powerlaw` (Clauset MLE fitting)
 - `pyyaml`, `h5py`, `pynwb` (for NWB-format real data)
 - `pytest`, `hypothesis`
 
-Pin versions in `pyproject.toml`. Note that `pip install` in some environments requires `--break-system-packages`.
+`cl-sdk` must be **version-pinned exactly** (`cl-sdk==X.Y.Z`, not `>=`). Statistic definitions are part of our scientific claims; a silent upstream change to a burst threshold would silently invalidate a fitted posterior. Record the resolved version in every run manifest (§11).
+
+**Verify before Task 0 completes:** that `cl-sdk`'s license permits this use, and that it installs cleanly on the target platform without CL1 hardware. Note that `cl.sim` is documented as simulator-only and absent on real CL1 devices — do not build anything on `cl.sim` that must later run on hardware. If either check fails, stop and report rather than proceeding.
+
+Pin all versions in `pyproject.toml`. Note that `pip install` in some environments requires `--break-system-packages`.
 
 ---
 
@@ -219,7 +236,9 @@ Implementation:
 5. Apply a per-electrode dead time to mimic detector refractoriness.
 6. Optionally mark a configurable fraction of electrodes as dead/broken — real arrays always have some.
 
-Output is a `SpikeRecording` with `n_channels = n_electrodes`. Everything downstream sees only this.
+Output is a `SpikeRecording` with `n_channels = n_electrodes`, **serialized in CL recording H5 format** (§6.0.1) as its native on-disk representation. Everything downstream sees only this.
+
+Writing CL format here rather than at the analysis boundary is deliberate: it means simulated recordings are directly consumable by CL application code and by `cl.analysis` with no translation, and it forces any format incompatibility to surface at Task 2 rather than at Task 3.
 
 ---
 
@@ -227,32 +246,75 @@ Output is a `SpikeRecording` with `n_channels = n_electrodes`. Everything downst
 
 Each function takes a `SpikeRecording` and returns floats or arrays. All must work identically on simulated and real data.
 
+### 6.0 Delegation policy — DELEGATE to `cl.analysis` by default
+
+Cortical Labs' `cl.analysis` module already implements network burst detection, functional connectivity (pairwise correlation with Louvain community detection), spike-triggered histograms, and criticality analysis (avalanche sizes, durations, shapes). We use it rather than reimplementing it.
+
+**Why, not just efficiency:** these are the definitions users of the CL1 platform will be quoting. A burst rate computed with our own threshold is not comparable to a burst rate computed with theirs, no matter how defensible ours is. Comparability is worth more than authorship here. Reimplementation also means our numbers and hardware numbers diverge the moment this model is validated against a real CL1 — which is the entire point of the project.
+
+| Statistic | Source | Notes |
+|---|---|---|
+| Network bursts (§6.2) | **`cl.analysis`** | rate, duration, spikes/burst, participation |
+| Avalanche sizes/durations (§6.3) | **`cl.analysis`** | raw distributions only |
+| Functional connectivity (§6.5) | **`cl.analysis`** | correlation graph, communities |
+| Rates & ISI stats (§6.1) | ours | trivial; no benefit to delegating |
+| Inter-burst-interval distribution (§6.2) | ours, **from CL burst boundaries** | derive IBIs from their burst times |
+| Power-law exponents + lognormal LLR (§6.3) | ours, **from CL avalanche data** | `powerlaw` on their distributions |
+| Crackling-noise relation (§6.3) | ours | not provided upstream |
+| MR branching ratio (§6.4) | ours | not provided upstream; see §6.4 |
+| Fingerprint assembly (§6.6) | ours | |
+
+**Hard rule: never reimplement a statistic `cl.analysis` provides.** If you believe theirs is wrong or unsuitable, do not silently substitute — write the objection into `CL_API_PROBE.md`, implement both, and report both in the fingerprint under distinct names.
+
+### 6.0.1 Adapter requirement (`interop/cl_adapter.py`)
+
+`cl.analysis` operates on CL `Recording` objects backed by H5 files, not on bare arrays. Therefore:
+
+- `SpikeRecording` must round-trip **to and from CL recording format**, preserving channel count, sampling rate, frame indices, and the `uV_per_sample_unit` scaling convention.
+- **The virtual MEA (§5) writes CL-format H5 as its native output.** This is a deliberate design choice: it forces format compatibility with real hardware from day one, and it means every downstream project can point CL application code at simulated data with no translation layer.
+- Real datasets (§7) are converted into the same format on load.
+
+Consequence: simulated data, real MEA data, and eventual CL1 data all flow through one format and one analysis path. That property is worth more than any individual statistic in this spec.
+
+### 6.0.2 Fallback
+
+Wrap every `cl.analysis` call behind our own function signature in `interop/cl_analysis.py`. Never call `cl.analysis` directly from `stats/` or `fit/`. If the dependency later becomes unavailable or license-incompatible, the fallback is a single module to reimplement rather than a rewrite. Mark each wrapper with a `# DELEGATED` comment naming the upstream function.
+
 ### 6.1 Rates (`rates.py`)
 - Mean firing rate per electrode; return mean, std, and the 10th/50th/90th percentiles of the across-electrode distribution. **The heterogeneity is a target, not noise** — real arrays have a few hot electrodes and many quiet ones. A uniform simulation is a failed simulation.
 - ISI coefficient of variation, pooled and per-electrode.
 - Fraction of active electrodes (rate > 0.01 Hz).
 
-### 6.2 Bursts (`bursts.py`)
-Network burst detection: bin all-array spike counts at 25 ms; a burst starts when the count exceeds a threshold derived from the surrogate distribution (shuffle ISIs to build a null), and ends when it drops below. Enforce a minimum duration and a minimum electrode participation.
+### 6.2 Bursts (`bursts.py`) — DELEGATED
+Call `cl.analysis` burst detection via the wrapper. Take from it: burst rate, per-burst durations, spikes per burst, electrode participation, and **burst boundary times**.
 
-Return: burst rate (per minute), mean and std duration, spikes per burst, fraction of electrodes participating, and the **full inter-burst-interval distribution** (report log-spaced histogram plus median and IQR). Real IBIs span roughly 1–300 seconds; that wide range is a strong discriminator and hard to fake.
+Derive ourselves from those boundaries: the **full inter-burst-interval distribution** — log-spaced histogram plus median and IQR. Real IBIs span roughly 1–300 seconds; that wide range is a strong discriminator and hard to fake, and it is the statistic most directly constraining `tau_rec`.
 
-### 6.3 Avalanches (`avalanche.py`)
-- Bin width Δt = mean inter-spike interval across the whole array. This is the standard convention; hard-coding a fixed bin width is a known way to manufacture or destroy power laws.
-- An avalanche is a run of consecutive non-empty bins bracketed by empty bins. Size = total spikes; duration = number of bins.
-- Fit exponents with the `powerlaw` package (Clauset MLE with `xmin` estimation), for sizes (`alpha`) and durations (`beta`).
-- **Compute the crackling-noise scaling relation**: fit `gamma` from the average-size-given-duration relation `<S>(D) ~ D**gamma`, then report the discrepancy `|gamma - (beta - 1)/(alpha - 1)|`. Matching one exponent is easy; matching the relation between them is not, which is exactly why it belongs in the fingerprint.
-- Always compare the power-law fit against a lognormal alternative and report the loglikelihood ratio. Never claim a power law without it.
+Record the upstream bin width and threshold convention in `CL_API_PROBE.md`; those are now part of our method section.
 
-### 6.4 Branching ratio (`branching.py`)
+### 6.3 Avalanches (`avalanche.py`) — PARTIALLY DELEGATED
+Take avalanche **sizes, durations, and shapes** from `cl.analysis` criticality analysis. Do not reimplement avalanche construction, and do not override its bin-width convention — record what that convention is.
+
+Compute ourselves, on top of their distributions:
+- Exponents via the `powerlaw` package (Clauset MLE with `xmin` estimation): `alpha` for sizes, `beta` for durations.
+- **Crackling-noise scaling relation**: fit `gamma` from `<S>(D) ~ D**gamma`, report the discrepancy `|gamma - (beta - 1)/(alpha - 1)|`. Matching one exponent is easy; matching the relation between them is not, which is exactly why it belongs in the fingerprint.
+- Power-law vs lognormal loglikelihood ratio. Never claim a power law without it.
+
+If `cl.analysis` already reports exponents, compute ours anyway and assert agreement within tolerance; a mismatch is a bug in one of us and must be resolved, not averaged.
+
+### 6.4 Branching ratio (`branching.py`) — OURS
+Not available upstream. `cl.analysis` provides avalanche distributions but no subsampling-corrected branching estimate, so this is one of the genuinely novel components.
+
 **Do not use the naive descendants/ancestors estimator.** It is severely biased under subsampling, and it biases toward reporting the network as more subcritical than it is — the bias depends on how many electrodes you have, so it produces different answers from identical biology.
 
 Implement the multistep-regression (MR) estimator (Wilting & Priesemann): compute the autocorrelation `r_k` of the binned population activity for lags `k = 1..k_max`, fit `r_k = C * m**k`, and recover `m` from the fitted decay. Return `m` plus the fit quality.
 
 Include the naive estimator too, clearly labelled, purely so the bias can be demonstrated in a figure.
 
-### 6.5 Connectivity (`connectivity.py`)
-Pairwise cross-correlation between electrode spike trains at a fixed bin width; threshold against a jitter-corrected surrogate null to build a binary functional connectivity graph. Return mean degree, degree-distribution skew, clustering coefficient.
+### 6.5 Connectivity (`connectivity.py`) — DELEGATED
+Call `cl.analysis` functional connectivity via the wrapper. Take the correlation-weighted graph and Louvain community assignments. Derive from the graph: mean degree, degree-distribution skew, clustering coefficient, number and size distribution of communities.
+
+Only if their implementation lacks surrogate-based thresholding, add a jitter-corrected null on top — and say so explicitly in the probe document.
 
 ### 6.6 Fingerprint assembly (`fingerprint.py`)
 Assemble all of the above into a fixed-order vector. Scalars enter directly; distributions enter as a small fixed set of quantiles (10/25/50/75/90) plus a log-spaced histogram of fixed bin edges. Frozen order defined in `fingerprint.yaml`.
@@ -354,14 +416,20 @@ Property-based tests via `hypothesis` for the spike-train data structures (sorte
 **Task 0 — Scaffold.** Repo layout, `pyproject.toml`, config schemas, `SpikeRecording` and `Fingerprint` dataclasses with HDF5 round-trip, CI running pytest.
 *Accept:* `pytest` passes on the round-trip and property tests. `culture-sim --help` works.
 
+**Task 0.5 — CL API probe.** Install `cl-sdk`. Empirically determine, by running it, exactly what `cl.analysis` accepts and returns: the constructor path for a `Recording`, required H5 schema and attributes, every burst/avalanche/connectivity function, its full signature, its default parameters (bin widths, thresholds, conventions), and its return types. Write findings to `interop/CL_API_PROBE.md` with runnable snippets.
+
+*Accept:* `CL_API_PROBE.md` exists and documents each function with a working example. A synthetic Poisson spike train is successfully passed through at least one `cl.analysis` function end-to-end. Any capability the docs imply but that does not work in practice is listed under a "Does not work" heading. License check from §2 recorded.
+
+**Rationale for doing this before anything else:** the rest of the spec assumes delegation. If the API cannot ingest externally generated spike data, that assumption breaks and §6 must be renegotiated before code is written against it. Find out now, not at Task 3.
+
 **Task 1 — Network with STP.** Implement §4 in full including Tsodyks–Markram synapses and the subprocess runner.
 *Accept:* A raster plot from a hand-tuned parameter set shows clear network bursts separated by quiet periods, with inter-burst intervals in the 1–60 s range. A static-synapse ablation is included and demonstrably fails to produce them. Simulation of 300 s biological time completes in under 60 s wall-clock.
 
-**Task 2 — Virtual MEA.** Implement §5 with configurable geometry for both a 60-electrode and an HD-MEA layout.
-*Accept:* Given identical neuron-level spikes, a 60-electrode and a 1024-electrode observation yield measurably different fingerprints, and the difference is documented in a figure. Dead-electrode simulation works.
+**Task 2 — Virtual MEA + CL adapter.** Implement §5 with configurable geometry for both a 60-electrode and an HD-MEA layout, plus `interop/cl_adapter.py` per §6.0.1.
+*Accept:* Given identical neuron-level spikes, a 60-electrode and a 1024-electrode observation yield measurably different fingerprints, documented in a figure. Dead-electrode simulation works. **A simulated recording written to CL H5 format loads successfully into `cl.analysis` and produces a burst analysis.** `SpikeRecording` → CL H5 → `SpikeRecording` is identity.
 
-**Task 3 — Statistics.** Implement §6 in full. Freeze `fingerprint.yaml`.
-*Accept:* All tests in §12 pass, including the demonstration of naive-estimator subsampling bias. Fingerprint computes end-to-end on simulated data in under 10 s.
+**Task 3 — Statistics.** Implement §6 in full, delegating per §6.0. Freeze `fingerprint.yaml`.
+*Accept:* All tests in §12 pass, including the demonstration of naive-estimator subsampling bias. Every delegated statistic is reached through an `interop/cl_analysis.py` wrapper — grep confirms no direct `cl.analysis` import outside `interop/`. Fingerprint computes end-to-end on simulated data in under 10 s.
 
 **Task 4 — Real data.** Implement §7. Verify dataset access first.
 *Accept:* At least one real recording loads into `SpikeRecording` and produces a complete fingerprint. Values are printed alongside published values for that dataset where available, with any discrepancy investigated and explained.
@@ -388,6 +456,10 @@ Property-based tests via `hypothesis` for the spike-train data structures (sorte
 - **Manufactured power laws.** Fixed bin widths, no `xmin` estimation, and no lognormal comparison will produce "power laws" from almost anything. Follow §6.3 exactly.
 - **Fitting to a single culture** and claiming generality. Cross-culture validation exists for a reason.
 - **Silent dataset substitution.** If the intended dataset is inaccessible, stop and report rather than quietly switching to something else with different geometry.
+- **Reimplementing what `cl.analysis` provides.** The temptation is strong because writing a burst detector is easy and reading someone else's conventions is tedious. Resist it; comparability is the whole reason for delegating.
+- **Unpinned `cl-sdk`.** An upstream change to a default bin width would silently invalidate every fitted posterior with no error raised. Pin exactly, record the version in every manifest.
+- **Calling `cl.analysis` outside `interop/`.** Scatter those calls through `stats/` and `fit/` and the dependency becomes unremovable. One wrapper module, always.
+- **Confusing `cl.sim` with our simulator.** `cl.sim` is a Poisson/replay data source for API testing and is absent on real CL1 hardware. It is not a network model and nothing scientific should depend on it.
 
 ---
 

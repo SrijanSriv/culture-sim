@@ -23,6 +23,7 @@ REQUIRED_MODULES = (
     "scipy",
     "pandas",
     "matplotlib",
+    "cl",
     "sbi",
     "torch",
     "powerlaw",

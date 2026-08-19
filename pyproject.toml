@@ -7,7 +7,7 @@ name = "culturesim"
 version = "0.1.0"
 description = "Parameter-calibrated in-silico model of a dissociated neuronal culture on an MEA"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 license = "MIT"
 authors = [{ name = "culture-sim contributors" }]
 keywords = ["neuroscience", "MEA", "brian2", "simulation-based-inference", "criticality"]
@@ -21,6 +21,7 @@ dependencies = [
   "scipy==1.18.0",
   "pandas==3.0.5",
   "matplotlib==3.11.1",
+  "cl-sdk==1.0.0",
   "sbi==0.27.0",
   "torch==2.13.0",
   "powerlaw==2.0.0",
@@ -56,7 +57,7 @@ filterwarnings = ["error::DeprecationWarning:culturesim.*"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py311"
+target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "NPY"]
