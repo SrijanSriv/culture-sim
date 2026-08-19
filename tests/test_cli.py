@@ -96,17 +96,22 @@ def test_documented_invocations_reach_a_handler(argv: list[str], cli_workspace, 
     distinct from failure on purpose: a half-built pipeline should not look broken, and
     a broken one should not look unbuilt.
     """
-    assert main(argv) == EXIT_NOT_IMPLEMENTED
-    assert "not implemented" in capsys.readouterr().err
+    exit_code = main(argv)
+    if argv[0] in {"simulate", "fingerprint"}:
+        assert exit_code == EXIT_OK
+        assert "wrote" in capsys.readouterr().out
+    else:
+        assert exit_code == EXIT_NOT_IMPLEMENTED
+        assert "not implemented" in capsys.readouterr().err
 
 
-def test_fit_refuses_an_unverified_dataset(cli_workspace, capsys) -> None:
-    """SPEC §7: verify the accession resolves before writing a loader."""
+def test_fit_refuses_until_dataset_loader_exists(cli_workspace, capsys) -> None:
+    """SPEC §7: verified access still needs an explicit loader."""
     exit_code = main(["fit", "coarse", "--data", "wagenaar2006", "--out", "c.json"])
     assert exit_code == EXIT_NOT_IMPLEMENTED
     message = capsys.readouterr().err
-    assert "access state 'unverified'" in message
-    assert "Do not substitute another dataset" in message
+    assert "Task 4" in message
+    assert "loading 'wagenaar2006' into a SpikeRecording" in message
 
 
 def test_missing_required_argument_is_a_usage_error() -> None:
