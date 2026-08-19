@@ -18,14 +18,27 @@ network:
   allow_multapses: false
 
 free:
-  p_conn: 0.12 # 1
-  w_e: 0.85 # mV, EPSP amplitude at rest (u=U, x=1)
-  g: 4.0 # 1, inhibitory/excitatory weight ratio
-  rate_bg: 3.0 # Hz, per-neuron independent Poisson drive
+  # Hand-tuned Task 1 starting point, found with scripts/tune_task1.py. Gives network
+  # bursts about every 10 s with a near-silent baseline between them (0.007 Hz/neuron).
+  # NOT a fit result -- Tasks 5 and 6 replace these.
+  #
+  # Three of these are sharp and worth understanding before changing them:
+  #   rate_bg sets the mean background depolarisation to ~15.8 mV against a 20 mV
+  #   rest-to-threshold gap, so the network idles just below threshold and bursts are
+  #   fluctuation-triggered. The window is narrow: 4.41 Hz is silent, 5.35 Hz is
+  #   continuously active with no quiet periods.
+  #   g must stay low. By g = 4 excitation and inhibition balance, which suppresses
+  #   synchrony into an asynchronous irregular state with no bursts at all.
+  #   tau_rec sets the inter-burst interval, since what ends a burst is depleted
+  #   synaptic resources and what permits the next one is their recovery.
+  p_conn: 0.20 # 1
+  w_e: 1.5 # mV, EPSP amplitude at a rested synapse (u=U, x=1)
+  g: 2.0 # 1, inhibitory/excitatory weight ratio
+  rate_bg: 4.98 # Hz, per-afferent rate; x n_background_synapses afferents per neuron
   tau_m: 20.0 # ms
   U: 0.25 # 1, STP utilisation
-  tau_rec: 800.0 # ms, STP recovery
-  b: 1.5 # mV, adaptation increment per spike
+  tau_rec: 2500.0 # ms, STP recovery; this is what sets the inter-burst interval
+  b: 2.5 # mV, adaptation increment per spike
 
 # Uniform prior box for SBI (SPEC §4.4) and bounds for the coarse optimiser.
 priors:
@@ -49,6 +62,13 @@ fixed:
   tau_a: 200.0 # ms  -- Ca-dependent K adaptation; Benda & Herz 2003, Neural Comput 15:2523
   # Synapse (SPEC §4.2)
   tau_f: 100.0 # ms  -- TM facilitation; Tsodyks & Markram 1997, PNAS 94:719
+  # Background drive (SPEC §4.3). External afferents per neuron, each at `rate_bg`;
+  # Brunel 2000 uses C_ext = C_E = 1000. Neither constant is in SPEC §4.4, and both are
+  # required -- with one afferent per neuron the network is silent across the whole
+  # `rate_bg` prior, and with the background amplitude tied to `w_e` no sparse-baseline
+  # bursting regime exists at all. See the comment in culturesim/model/params.py.
+  n_background_synapses: 1000
+  w_background: 0.1 # mV, EPSP amplitude of a single background afferent
   # Topology (SPEC §4.3)
   lambda_conn_fraction_of_width: 0.3333333333 # SPEC §4.4: one third of array width
   synaptic_delay_ms: [1.0, 3.0] # uniform axonal delay; Wagenaar et al. 2006, BMC Neurosci 7:11

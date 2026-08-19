@@ -72,14 +72,14 @@ FREE_PARAM_UNITS: dict[str, str] = {
 class FreeParams:
     """The 8 fitted parameters (SPEC §4.4)."""
 
-    p_conn: float = 0.12  # 1,  connection probability scale
-    w_e: float = 0.85  # mV, excitatory weight (EPSP at u=U, x=1)
-    g: float = 4.0  # 1,  inhibition/excitation weight ratio
-    rate_bg: float = 3.0  # Hz, per-neuron Poisson background drive
+    p_conn: float = 0.20  # 1,  connection probability scale
+    w_e: float = 1.5  # mV, EPSP amplitude at a rested synapse (u=U, x=1)
+    g: float = 2.0  # 1,  inhibition/excitation weight ratio
+    rate_bg: float = 4.98  # Hz, per-afferent rate of the background drive
     tau_m: float = 20.0  # ms, membrane time constant
     U: float = 0.25  # 1,  Tsodyks-Markram utilisation
-    tau_rec: float = 800.0  # ms, Tsodyks-Markram recovery
-    b: float = 1.5  # mV, adaptation increment per spike
+    tau_rec: float = 2500.0  # ms, Tsodyks-Markram recovery
+    b: float = 2.5  # mV, adaptation increment per spike
 
     def __post_init__(self) -> None:
         for name in FREE_PARAM_NAMES:
@@ -127,6 +127,27 @@ class FixedParams:
     tau_a: float = 200.0  # ms, Ca-dependent K adaptation; Benda & Herz 2003, Neural Comput 15:2523
     # -- Synapse (SPEC §4.2) --
     tau_f: float = 100.0  # ms, TM facilitation; Tsodyks & Markram 1997, PNAS 94:719
+    # -- Background drive (SPEC §4.3) --
+    # External afferents per neuron, each firing at the free parameter `rate_bg`.
+    # Brunel 2000 (J Comput Neurosci 8:183) uses C_ext = C_E = 1000 external synapses
+    # per neuron for exactly this purpose.
+    #
+    # These two constants are required for the model to work at all, and their absence
+    # from SPEC §4.4 is a gap in the spec rather than a modelling choice.
+    #
+    # `n_background_synapses`: with a single afferent per neuron, crossing the 20 mV
+    # rest-to-threshold gap needs ~4.7 kHz of drive, three orders of magnitude outside
+    # `rate_bg`'s 0.1-20 Hz prior, so the network is silent across the whole prior box.
+    #
+    # `w_background`: the background amplitude must be independent of `w_e`. Driving the
+    # background at `w_e` makes the baseline membrane noise scale with the recurrent
+    # gain -- raising `w_e` to get bursts to ignite simultaneously raises the spontaneous
+    # firing rate -- and no sparse-baseline bursting regime exists anywhere in the prior.
+    # Decoupling them lets `rate_bg` set how far below threshold the network idles while
+    # `w_e` sets how explosively it recruits. 0.1 mV is a weak distal unitary EPSP; with
+    # 1000 afferents the prior spans a mean depolarisation of ~0.3-63 mV.
+    n_background_synapses: int = 1000
+    w_background: float = 0.1  # mV, EPSP amplitude of one background afferent
     # -- Topology (SPEC §4.3/§4.4) --
     lambda_conn_fraction_of_width: float = 1.0 / 3.0  # SPEC §4.4: one third of array width
     # ms, uniform axonal/synaptic delay range; Wagenaar, Pine & Potter 2006, BMC Neurosci 7:11
@@ -136,6 +157,13 @@ class FixedParams:
         object.__setattr__(
             self, "synaptic_delay_ms", tuple(float(d) for d in self.synaptic_delay_ms)
         )
+        object.__setattr__(self, "n_background_synapses", int(self.n_background_synapses))
+        if self.n_background_synapses < 1:
+            raise ValueError(
+                f"n_background_synapses must be positive, got {self.n_background_synapses}"
+            )
+        if self.w_background <= 0:
+            raise ValueError(f"w_background must be positive, got {self.w_background}")
         if len(self.synaptic_delay_ms) != 2:
             raise ValueError("synaptic_delay_ms must be a (low, high) pair in ms")
         low, high = self.synaptic_delay_ms
@@ -187,6 +215,13 @@ class SimulationParams:
     transient_s: float = 20.0  # discarded warm-up; excluded from the output duration
     static_synapses: bool = False  # True gives the Task 1 ablation
     record_neuron_positions: bool = True
+    # "diffusion" replaces the explicit Poisson background with an equivalent
+    # Ornstein-Uhlenbeck current. Profiling put the explicit version at 6.3 s of a
+    # 16.9 s run -- more than the integration loop itself -- because with
+    # N*rate*dt ~ 0.5 Brian2's binomial sampler cannot take its normal-approximation
+    # fast path. "poisson" is the exact reference, kept so the approximation can be
+    # tested rather than assumed (see tests/test_network.py).
+    background_mode: str = "diffusion"
 
     def __post_init__(self) -> None:
         if self.duration_s <= 0:
@@ -195,6 +230,10 @@ class SimulationParams:
             raise ValueError(f"dt_ms must be positive, got {self.dt_ms}")
         if self.transient_s < 0:
             raise ValueError(f"transient_s must be non-negative, got {self.transient_s}")
+        if self.background_mode not in {"diffusion", "poisson"}:
+            raise ValueError(
+                f"background_mode must be 'diffusion' or 'poisson', got {self.background_mode!r}"
+            )
 
     @property
     def total_duration_s(self) -> float:

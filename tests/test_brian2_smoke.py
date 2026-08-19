@@ -19,6 +19,7 @@ from culturesim.model.network import (
     RESET,
     SYNAPSE_MODEL_STP,
     THRESHOLD,
+    background_moments,
 )
 from culturesim.model.params import ModelParams
 
@@ -39,6 +40,7 @@ def _isolated_brian2_scope():
 
 def _namespace(params: ModelParams) -> dict:
     """The Brian2 namespace, with units attached to the unit-free parameters."""
+    mu_bg, sigma_bg = background_moments(params)
     return {
         "E_L": params.fixed.E_L * b2.mV,
         "v_th": params.fixed.v_th * b2.mV,
@@ -51,6 +53,8 @@ def _namespace(params: ModelParams) -> dict:
         "tau_rec": params.free.tau_rec * b2.ms,
         "U": params.free.U,
         "b": params.free.b * b2.mV,
+        "mu_bg": mu_bg * b2.mV,
+        "sigma_bg": sigma_bg * b2.mV,
     }
 
 
@@ -137,6 +141,8 @@ def test_first_epsp_amplitude_matches_the_hand_computed_value() -> None:
     """
     params = ModelParams()
     namespace = _namespace(params)
+    namespace["mu_bg"] = 0 * b2.mV
+    namespace["sigma_bg"] = 0 * b2.mV
 
     source = b2.SpikeGeneratorGroup(1, [0], [1] * b2.ms)
     target = b2.NeuronGroup(
