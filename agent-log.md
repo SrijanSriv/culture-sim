@@ -8,6 +8,46 @@ Newest entries at the top.
 
 ---
 
+## 2026-08-19 — Task 1 runtime budget closed
+
+Agent: Cursor Grok. Branch `main`. SPEC §13 Task 1.
+
+Shipped defaults are now `background_mode: poisson` and `dt_ms: 0.2`. Diffusion stays
+as a testable approximation only; do not turn it on to chase wall-clock.
+
+Measured on this machine, poisson, 1000 neurons, 10 s vs 40 s to separate compile from
+integration:
+
+| dt | fixed | per biological s | projected 300 s |
+|---|---|---|---|
+| 0.1 ms | 5.4 s | 0.177 s | **58.5 s** (inside 60 s, not "well under") |
+| 0.2 ms | 4.8 s | 0.124 s | **42.1 s** |
+
+Apple clang here has no libomp, so OpenMP is not available; even if it were, threading
+inside each SBI worker would oversubscribe the pool. `dt = 0.2 ms` is the budget lever
+that helps every draw independently. Burst/avalanche analysis bins are 50 ms and
+`tau_m = 20 ms` is still 100 steps, so this does not coarsen the fingerprint.
+
+Full 300 s acceptance run (`scripts/figure_task1_bursts.py --duration 300`):
+
+- STP: **53.7 s** wall-clock (PASS), 34 bursts, median IBI **8.55 s** (range 3.9–16.9 s),
+  0.69 Hz/neuron, quiet fraction 0.87. Raster shows isolated network bursts.
+- Static ablation: 54.8 s, 10.88 Hz/neuron (~16x), median IBI 3.45 s. Still fails to
+  look like a culture via the hyperactive criterion (not via IBI-CV-as-metronome; at
+  these defaults the ablation is dense bursting, not the CV 0.11 oscillator seen earlier).
+
+`compute_fingerprint` now refuses `metadata["observation"] == "none"`. pytest: **159
+passed**.
+
+### Still open
+
+1. Task 2 remainder: 60-vs-1024 fingerprint comparison figure; HD-MEA CL channel-id
+   blocker in `cl-sdk==1.0.0`.
+2. Task 3: freeze `fingerprint.yaml`.
+3. Task 4: write `load_wagenaar`.
+
+---
+
 ## 2026-08-19 — commit the parallel Task 0.5–4 work
 
 Agent: Cursor Grok. Branch `main`.
@@ -21,14 +61,8 @@ network → virtual MEA → Task 3 stats → dataset access verification → REA
 
 ### Still open (unchanged by the commit pass)
 
-1. Runtime budget: projected **66 s** for 300 s biological vs **60 s** SPEC §4.5 —
-   decide (`dt=0.2 ms` measured ~46 s; OpenMP not tried).
-2. Task 2 remainder: 60-vs-1024 fingerprint comparison figure; HD-MEA CL channel-id
-   blocker in `cl-sdk==1.0.0` (documented in probe).
-3. Task 3: freeze `fingerprint.yaml` once the vector is final.
-4. Task 4: write `load_wagenaar` (access + schema already recorded).
-5. Prefer `background_mode: "poisson"` as the scientific default if diffusion remains
-   only a speed experiment — check `params.py` before the next sim campaign.
+Superseded by the Task 1 runtime-budget entry at the top. Remaining: Task 2 60-vs-1024
+figure, fingerprint freeze, `load_wagenaar`.
 
 ---
 
@@ -143,21 +177,11 @@ CV 0.11, at 17.7 Hz/neuron versus 0.91 for the STP network. So the acceptance ch
 "not culture-like bursting" (degenerate IBI spread or a far higher rate), not "fewer
 bursts". A count-based check passes the ablation and is wrong.
 
-### Runtime: 66 s projected for 300 s, against a 60 s budget — OPEN
+### Runtime: 66 s projection — superseded
 
-`scripts/profile_runtime.py`, one run at a time, 1000 neurons:
-
-| component | cost |
-|---|---|
-| fixed (C++ compile) | 4.0 s |
-| bare integration loop | 0.095 s per biological s |
-| `PoissonInput` background | 0.105 s per biological s |
-| recurrent synapses | 0.015 s per biological s |
-| **projected 300 s** | **66 s vs 60 s budget** |
-
-10% over. Options not yet taken: `dt = 0.2 ms` measured 27% faster (would give ~46 s) but
-coarsens avalanche timing; OpenMP for solo runs (Apple clang needs libomp). `SPEC.md`
-§4.5 asks for profiling before proceeding, which is done — the decision is not.
+The 66 s / 0.1 ms projection and the "OpenMP not tried" note are closed by the
+runtime-budget entry at the top of this file. Component costs from that profile are
+in `agent-log-archive.md`.
 
 ### Dead end: do not retry the diffusion-approximation background
 
@@ -182,11 +206,6 @@ distance decay, detection, per-electrode dead time, dead electrodes. Detection u
 drawing Gaussian noise per spike per electrode, but one evaluation per pair instead of
 ~90 million draws per 300 s run.
 
-**Not done, and now also needs the CL work:** the 60-vs-1024-electrode fingerprint
-comparison figure, and the `interop/cl_adapter.py` H5 round-trip that `SPEC.md` §13
-Task 2 now requires.
-
-### Next steps (superseded list — see commit-pass entry at top)
-
-Original checklist items 1–2 and 5 are done. Remaining: runtime budget decision, Task 2
-60-vs-1024 figure, fingerprint freeze, `load_wagenaar`.
+Remaining Task 2: the 60-vs-1024-electrode fingerprint comparison figure. CL H5
+round-trip for 60 electrodes is done; HD-MEA is blocked by `cl-sdk==1.0.0` uint8
+channel ids (see `CL_API_PROBE.md`).

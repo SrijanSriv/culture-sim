@@ -71,7 +71,7 @@ _I_E_POISSON = "dI_e/dt = -I_e / tau_e                              : volt"
 _I_E_DIFFUSION = "dI_e/dt = (mu_bg - I_e) / tau_e + sigma_bg * sqrt(2 / tau_e) * xi : volt"
 
 
-def neuron_equations(background_mode: str = "diffusion") -> str:
+def neuron_equations(background_mode: str = "poisson") -> str:
     """Membrane equations, with the background drive folded in or left explicit."""
     if background_mode == "diffusion":
         return _NEURON_EQUATIONS_TEMPLATE.format(excitatory_current=_I_E_DIFFUSION)
@@ -88,8 +88,8 @@ def background_moments(params: ModelParams) -> tuple[float, float]:
     return jump * total_rate * tau_e_s, jump * float(np.sqrt(total_rate * tau_e_s / 2.0))
 
 
-# Retained for callers that want the default form directly.
-NEURON_EQUATIONS = neuron_equations("diffusion")
+# Retained for callers that want the default (poisson) form directly.
+NEURON_EQUATIONS = neuron_equations()
 
 THRESHOLD = "v > v_th"
 RESET = "v = v_reset; a += b"

@@ -319,6 +319,12 @@ def compute_fingerprint(
     from .rates import rate_stats
 
     spec = FingerprintSpec.load() if spec is None else spec
+    if recording.metadata.get("observation") == "none":
+        raise ValueError(
+            "fingerprint requires electrode-level data; this recording is tagged "
+            "observation='none' (neuron-level). Pass it through the virtual MEA "
+            "first (SPEC §5, §14)."
+        )
     rng = np.random.default_rng(0)
 
     rates = rate_stats(recording)

@@ -49,7 +49,14 @@ def main() -> int:
                 free=base.free.replace(p_conn=0.0),
             ),
         ),
-        ("dt = 0.2 ms", replace(base, simulation=replace(base.simulation, dt_ms=0.2))),
+        (
+            "dt = 0.1 ms",
+            replace(base, simulation=replace(base.simulation, dt_ms=0.1)),
+        ),
+        (
+            "diffusion background",
+            replace(base, simulation=replace(base.simulation, background_mode="diffusion")),
+        ),
     ]
 
     print(f"{args.duration}s biological, {args.neurons} neurons, one run at a time")

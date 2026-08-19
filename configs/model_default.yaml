@@ -75,10 +75,16 @@ fixed:
 
 simulation:
   duration_s: 300.0 # biological time; must complete in <60 s wall-clock (SPEC §4.5)
-  dt_ms: 0.1
+  # 0.2 ms is the budget decision: poisson + 0.1 ms projects to 58.5 s for 300 s
+  # biological (inside the 60 s cap, not "well under"); 0.2 ms projects to 42.1 s.
+  # Burst/avalanche analysis bins are 50 ms, so this does not coarsen the fingerprint.
+  dt_ms: 0.2
   transient_s: 20.0 # discarded warm-up, excluded from `duration` of the output
   static_synapses: false # true reproduces the Task 1 ablation (SPEC §13)
   record_neuron_positions: true # needed by the virtual MEA
+  # Exact Poisson afferents (SPEC §4.3). Diffusion is a slower, statistically
+  # different approximation; do not switch it on to chase the runtime budget.
+  background_mode: poisson
 
 runner:
   build_root: null # null -> system temp dir; each run gets its own subdirectory

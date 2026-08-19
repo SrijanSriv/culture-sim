@@ -133,3 +133,17 @@ def test_fixed_params_are_physically_consistent() -> None:
 def test_static_synapse_ablation_is_off_by_default() -> None:
     """The ablation exists for the Task 1 acceptance test, not as a default."""
     assert ModelParams.load("model_default.yaml").simulation.static_synapses is False
+
+
+def test_poisson_background_is_the_scientific_default() -> None:
+    """Diffusion was a failed speed experiment; SPEC §4.3 is independent Poisson drive."""
+    simulation = ModelParams.load("model_default.yaml").simulation
+    assert simulation.background_mode == "poisson"
+    assert SimulationParams().background_mode == "poisson"
+
+
+def test_timestep_is_the_measured_budget_decision() -> None:
+    """0.2 ms is what puts 300 s biological well under the 60 s wall-clock budget."""
+    simulation = ModelParams.load("model_default.yaml").simulation
+    assert simulation.dt_ms == pytest.approx(0.2)
+    assert SimulationParams().dt_ms == pytest.approx(0.2)

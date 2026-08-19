@@ -211,17 +211,24 @@ class SimulationParams:
     """Run-time settings (SPEC §4.5)."""
 
     duration_s: float = 300.0
-    dt_ms: float = 0.1
+    # 0.2 ms rather than 0.1 ms is the SPEC §4.5 budget decision. On this machine a
+    # 300 s poisson run projects to 58.5 s at 0.1 ms (inside 60 s but not "well
+    # under") and 42.1 s at 0.2 ms. Analysis bins for bursts and avalanches are
+    # 50 ms, and tau_m = 20 ms is still 100 steps, so the coarser clock does not
+    # change the statistics the fingerprint can see. OpenMP was not an option:
+    # Apple clang has no libomp here, and intra-process threads would oversubscribe
+    # the SBI pool anyway.
+    dt_ms: float = 0.2
     transient_s: float = 20.0  # discarded warm-up; excluded from the output duration
     static_synapses: bool = False  # True gives the Task 1 ablation
     record_neuron_positions: bool = True
-    # "diffusion" replaces the explicit Poisson background with an equivalent
-    # Ornstein-Uhlenbeck current. Profiling put the explicit version at 6.3 s of a
-    # 16.9 s run -- more than the integration loop itself -- because with
-    # N*rate*dt ~ 0.5 Brian2's binomial sampler cannot take its normal-approximation
-    # fast path. "poisson" is the exact reference, kept so the approximation can be
-    # tested rather than assumed (see tests/test_network.py).
-    background_mode: str = "diffusion"
+    # "poisson" is the scientific default (SPEC §4.3: independent Poisson afferents).
+    # "diffusion" replaces that with a moment-matched Ornstein-Uhlenbeck current.
+    # It was tried as a speedup and was 0.91x -- slower -- and it shifted rates and
+    # burst counts because the network sits close enough to threshold to feel the
+    # higher moments. Kept only so the approximation can be tested rather than
+    # assumed; scripts/check_background_modes.py reproduces the comparison.
+    background_mode: str = "poisson"
 
     def __post_init__(self) -> None:
         if self.duration_s <= 0:

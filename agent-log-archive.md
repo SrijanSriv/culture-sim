@@ -12,6 +12,24 @@ Newest entries at the top.
 
 ---
 
+## 2026-08-19 — Task 1 runtime profile (superseded by the budget decision)
+
+Historical component costs from `scripts/profile_runtime.py`, 1000 neurons, that led
+to the 66 s projection later replaced by `dt = 0.2 ms`:
+
+| component | cost |
+|---|---|
+| fixed (C++ compile) | 4.0 s |
+| bare integration loop | 0.095 s per biological s |
+| `PoissonInput` background | 0.105 s per biological s |
+| recurrent synapses | 0.015 s per biological s |
+| **projected 300 s** | **66 s vs 60 s budget** |
+
+`dt = 0.2 ms` was 27% faster on that machine. The "coarsens avalanche timing" worry
+was dropped: analysis bins are 50 ms. OpenMP was not available (Apple clang, no libomp).
+
+---
+
 ## 2026-08-19 — mid-session SPEC growth (now committed)
 
 Historical: while Task 1 was in flight, `SPEC.md` gained Task 0.5, §6.0 `cl.analysis`

@@ -172,3 +172,20 @@ def test_empty_values_matches_the_spec_length(spec: FingerprintSpec) -> None:
     values = spec.empty_values()
     assert values.size == len(spec)
     assert np.all(np.isnan(values))
+
+
+def test_fingerprint_refuses_neuron_level_recordings(spec: FingerprintSpec) -> None:
+    """SPEC §5 / §14: statistics on 1000 neurons are not comparable to 60 electrodes."""
+    from culturesim.stats.fingerprint import compute_fingerprint
+    from culturesim.stats.spiketrains import SpikeRecording
+
+    recording = SpikeRecording(
+        times=np.array([0.1, 0.2]),
+        channels=np.array([0, 1]),
+        n_channels=1000,
+        duration=1.0,
+        source="simulation-neuron-level",
+        metadata={"observation": "none"},
+    )
+    with pytest.raises(ValueError, match="electrode-level"):
+        compute_fingerprint(recording, spec)
