@@ -12,6 +12,16 @@ Newest entries at the top.
 
 ---
 
+## 2026-08-19 — mid-session SPEC growth (now committed)
+
+Historical: while Task 1 was in flight, `SPEC.md` gained Task 0.5, §6.0 `cl.analysis`
+delegation, CL-native H5 for the virtual MEA, and Python 3.12+ / exact `cl-sdk` pin.
+That reshaped Tasks 2–3. The policy is now in `SPEC.md` itself; the interop layer and
+stats wrappers landed in the commit pass. Kept only so the timeline of the parallel
+edits is not lost.
+
+---
+
 ## 2026-08-19 — Task 1 tuning trail (superseded by the final parameter set)
 
 Kept because it maps the shape of the parameter space, which is not obvious and cost four

@@ -37,28 +37,11 @@ network → virtual MEA → Task 3 stats → dataset access verification → REA
 Agent: Claude Opus 5. Branch `main`, originated at `7eec5cb`; technical findings below.
 Procedural "uncommitted / parallel edits" framing was resolved by the commit pass above.
 
-### `SPEC.md` grew mid-session and added a task that blocks Tasks 2 and 3
+### Spec change that landed mid-Task-1 (archived detail)
 
-`SPEC.md` gained 95 lines while I was working (`git diff SPEC.md`). The additions
-introduce a dependency the earlier scaffold knew nothing about:
-
-- **Task 0.5 — CL API probe**, which the spec says to do *before anything else*
-  (§13). Install `cl-sdk`, empirically determine what `cl.analysis` accepts and returns,
-  write `interop/CL_API_PROBE.md`.
-- **§6.0 delegation policy**: burst detection, avalanche sizes/durations/shapes, and
-  functional connectivity must come **from `cl.analysis`**, not from our own code. Only
-  rates/ISI, IBI distribution, power-law fitting, crackling-noise, MR branching, and
-  fingerprint assembly stay ours.
-- **§6.0.1**: the virtual MEA must write **CL-format H5 as its native output**, and
-  `SpikeRecording` must round-trip to and from it.
-- **§2**: `cl-sdk` must be pinned exactly, and Python **3.12+** is required.
-
-This substantially reshapes Task 3, adds a requirement to Task 2, and means the existing
-stub bodies in `stats/{bursts,avalanche,connectivity}.py` should become thin consumers of
-`interop/cl_analysis.py` rather than implementations.
-
-`culturesim/interop/__init__.py` and `culturesim/interop/cl_adapter.py` (~8.5 KB) already
-exist on disk, created at 21:31 and not by me. I have not read or verified them.
+Task 0.5 / §6.0 CL delegation / CL-native H5 / Python 3.12+ were added to `SPEC.md`
+while the network work was in flight. Narrative moved to `agent-log-archive.md`; the
+live contract is `SPEC.md`.
 
 ### `cl-sdk` — installed and probed (see `interop/CL_API_PROBE.md`)
 
