@@ -1,0 +1,67 @@
+# Model configuration (SPEC §4).
+#
+# `free` holds the 8 fitted parameters of SPEC §4.4 -- the values here are the
+# hand-tuned Task 1 starting point, not a fit result. `fixed` holds parameters
+# taken from the literature; each carries its source, and the same citations
+# appear next to the defaults in culturesim/model/params.py.
+
+seed: 20250819 # master seed; all randomness derives from this (SPEC §11)
+
+network:
+  n_neurons: 1000 # SPEC §4.3: burst statistics are unstable below ~800
+  excitatory_fraction: 0.8
+  # 2-D sheet matching the MCS 60-electrode sensing area: 8x8 grid at 200 um
+  # pitch spans 1400 um, padded to 1800 um so edge neurons are still observed.
+  sheet_width_um: 1800.0
+  sheet_height_um: 1800.0
+  allow_autapses: false
+  allow_multapses: false
+
+free:
+  p_conn: 0.12 # 1
+  w_e: 0.85 # mV, EPSP amplitude at rest (u=U, x=1)
+  g: 4.0 # 1, inhibitory/excitatory weight ratio
+  rate_bg: 3.0 # Hz, per-neuron independent Poisson drive
+  tau_m: 20.0 # ms
+  U: 0.25 # 1, STP utilisation
+  tau_rec: 800.0 # ms, STP recovery
+  b: 1.5 # mV, adaptation increment per spike
+
+# Uniform prior box for SBI (SPEC §4.4) and bounds for the coarse optimiser.
+priors:
+  p_conn: [0.01, 0.30]
+  w_e: [0.05, 3.0]
+  g: [1.0, 12.0]
+  rate_bg: [0.1, 20.0]
+  tau_m: [10.0, 40.0]
+  U: [0.05, 0.8]
+  tau_rec: [100.0, 5000.0]
+  b: [0.0, 5.0]
+
+fixed:
+  # Neuron (SPEC §4.1)
+  E_L: -70.0 # mV  -- resting potential, cortical pyramidal; Dayan & Abbott 2001, ch. 5
+  v_th: -50.0 # mV  -- LIF spike threshold; Brette & Gerstner 2005
+  v_reset: -60.0 # mV  -- reset potential; Brunel 2000, J Comput Neurosci 8:183
+  t_ref: 2.0 # ms  -- absolute refractory period; Brunel 2000
+  tau_e: 5.0 # ms  -- AMPA-mediated decay; Destexhe, Mainen & Sejnowski 1998
+  tau_i: 10.0 # ms  -- GABA_A-mediated decay; Destexhe, Mainen & Sejnowski 1998
+  tau_a: 200.0 # ms  -- Ca-dependent K adaptation; Benda & Herz 2003, Neural Comput 15:2523
+  # Synapse (SPEC §4.2)
+  tau_f: 100.0 # ms  -- TM facilitation; Tsodyks & Markram 1997, PNAS 94:719
+  # Topology (SPEC §4.3)
+  lambda_conn_fraction_of_width: 0.3333333333 # SPEC §4.4: one third of array width
+  synaptic_delay_ms: [1.0, 3.0] # uniform axonal delay; Wagenaar et al. 2006, BMC Neurosci 7:11
+
+simulation:
+  duration_s: 300.0 # biological time; must complete in <60 s wall-clock (SPEC §4.5)
+  dt_ms: 0.1
+  transient_s: 20.0 # discarded warm-up, excluded from `duration` of the output
+  static_synapses: false # true reproduces the Task 1 ablation (SPEC §13)
+  record_neuron_positions: true # needed by the virtual MEA
+
+runner:
+  build_root: null # null -> system temp dir; each run gets its own subdirectory
+  n_workers: null # null -> cpu_count() - 1
+  timeout_s: 600
+  keep_build_dir: false

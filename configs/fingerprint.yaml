@@ -1,0 +1,106 @@
+# Fingerprint specification (SPEC §6.6).
+#
+# The flattened `names` tuple produced from this file IS the fingerprint order.
+# It is expanded deterministically by culturesim.stats.fingerprint.FingerprintSpec
+# in the order the groups appear here: scalars first, then quantiles, then
+# histogram bins.
+#
+# SPEC §3 / §14: this order freezes at the end of Task 3. Adding, removing or
+# reordering an entry after that invalidates every fit made against it. The
+# procedure is to bump `version` and re-run everything -- `names_sha256` exists
+# so an accidental edit is caught by the test suite rather than by a reviewer.
+
+version: "0.1.0-draft"
+frozen: false
+names_sha256: null # set by `scripts/freeze_fingerprint.py` when frozen: true
+
+# Default quantile levels for any distributional statistic (SPEC §6.6).
+default_quantile_levels: [10, 25, 50, 75, 90]
+
+groups:
+  # -- SPEC §6.1 ------------------------------------------------------------
+  - name: rates
+    weight: 1.0
+    scalars:
+      - rate_mean # across-electrode mean firing rate, Hz
+      - rate_std # across-electrode std; heterogeneity is a target, not noise
+      - rate_p10
+      - rate_p50
+      - rate_p90
+      - isi_cv_pooled
+      - isi_cv_electrode_mean
+      - isi_cv_electrode_std
+      - active_electrode_fraction # rate > 0.01 Hz
+
+  # -- SPEC §6.2 ------------------------------------------------------------
+  - name: bursts
+    weight: 1.0
+    scalars:
+      - burst_rate_per_min
+      - burst_duration_mean
+      - burst_duration_std
+      - burst_size_mean # spikes per burst
+      - burst_size_std
+      - burst_participation_mean # fraction of electrodes taking part
+    quantiles:
+      - stat: ibi_seconds
+    histograms:
+      # Real inter-burst intervals span roughly 1-300 s (SPEC §6.2). Edges run
+      # wider than that on both sides so a mis-tuned simulation lands inside
+      # the histogram rather than piling up in an edge bin.
+      - stat: ibi_seconds
+        scale: log10
+        start: -1.0
+        stop: 2.7
+        n_bins: 12
+        normalize: density
+
+  # -- SPEC §6.3 ------------------------------------------------------------
+  - name: avalanches
+    weight: 1.0
+    scalars:
+      - avalanche_alpha # size exponent, Clauset MLE with xmin estimation
+      - avalanche_beta # duration exponent
+      - avalanche_gamma_fit # <S>(D) ~ D**gamma
+      - avalanche_scaling_discrepancy # |gamma - (beta - 1)/(alpha - 1)|
+      - avalanche_size_xmin
+      - avalanche_duration_xmin
+      - avalanche_size_loglik_ratio_lognormal # >0 favours power law
+      - avalanche_duration_loglik_ratio_lognormal
+    histograms:
+      - stat: avalanche_size
+        scale: log10
+        start: 0.0
+        stop: 4.0
+        n_bins: 10
+        normalize: density
+      - stat: avalanche_duration
+        scale: log10
+        start: 0.0
+        stop: 2.4
+        n_bins: 8
+        normalize: density
+
+  # -- SPEC §6.4 ------------------------------------------------------------
+  # The naive descendants/ancestors estimator is computed by branching.py but
+  # deliberately excluded from the vector: it is subsampling-biased, so its
+  # value depends on electrode count rather than on biology.
+  - name: branching
+    weight: 1.0
+    scalars:
+      - branching_ratio_mr # Wilting & Priesemann multistep regression
+      - branching_mr_fit_r2
+
+  # -- SPEC §6.5 ------------------------------------------------------------
+  - name: connectivity
+    weight: 1.0
+    scalars:
+      - fc_mean_degree
+      - fc_degree_skew
+      - fc_clustering_coefficient
+
+# Sentinel written into the vector when a statistic is undefined for a
+# recording (SPEC §12: empty / single-spike / single-electrode recordings must
+# return without crashing). NaN propagates loudly instead of silently scoring
+# well, and distance.py is required to handle it explicitly.
+undefined_value: .nan

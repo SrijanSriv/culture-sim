@@ -1,0 +1,54 @@
+# Virtual MEA / observation model (SPEC §5).
+#
+# This is the observational bottleneck. Statistics are NEVER computed on the
+# 1000 neuron-level spike trains -- they are computed on the electrode-level
+# SpikeRecording that comes out of this module, because that is what the real
+# data has been through. See SPEC §14.
+
+active_layout: mcs_60
+
+layouts:
+  mcs_60:
+    # Multi Channel Systems 60MEA200/30iR-Ti: 8x8 grid, 200 um pitch, the four
+    # corners omitted, one channel used as internal reference -> 59 recording
+    # sites. Modelled here as the full 60 for index simplicity.
+    description: "MCS 60-electrode, 8x8 minus corners, 200 um pitch"
+    kind: grid
+    n_rows: 8
+    n_cols: 8
+    pitch_um: 200.0
+    omit_corners: true
+    n_electrodes: 60
+
+  hd_mea_1024:
+    # MaxWell MaxOne: 26400 sites at 17.5 um pitch, of which 1024 can be routed
+    # simultaneously. This is the "spread" routing pattern -- 32x32 sites picked
+    # evenly across the sensing area rather than a dense local patch.
+    description: "MaxWell HD-MEA, 1024 routed sites in a 32x32 spread pattern"
+    kind: grid
+    n_rows: 32
+    n_cols: 32
+    pitch_um: 55.0
+    omit_corners: false
+    n_electrodes: 1024
+
+# Extracellular amplitude at an electrode a distance d from the soma:
+#     A = A_0 / (1 + (d / d_0)**2)
+amplitude:
+  A_0_uv: 150.0 # peak amplitude adjacent to the soma; Buzsaki et al. 2012, Nat Rev Neurosci 13:407
+  d_0_um: 25.0 # decay length; gives a ~75 um detection radius at the default threshold
+  # Per-neuron multiplicative amplitude scatter (lognormal, sigma in log space).
+  # Real arrays have a few hot electrodes and many quiet ones (SPEC §6.1); cell
+  # size and soma-electrode coupling variability is where that comes from.
+  per_neuron_sigma: 0.5
+
+noise:
+  rms_uv: 3.0 # SPEC §5: 2-5 uV typical for a healthy MEA recording
+  threshold_k: 5.0 # detect if A > k * rms; the standard convention
+
+detector:
+  dead_time_ms: 2.0 # per-electrode detector refractoriness
+  # Real arrays always have some broken sites (SPEC §5.6).
+  dead_electrode_fraction: 0.05
+  # If set, use exactly these electrode indices as dead instead of drawing them.
+  dead_electrode_indices: null

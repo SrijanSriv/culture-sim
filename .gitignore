@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+
+# Testing
+.pytest_cache/
+.hypothesis/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Brian2 standalone build directories. The runner puts these under a temp root, but
+# a crashed run can leave one behind in the working directory.
+output/
+cpp_standalone/
+
+# Run outputs and caches. Simulation results are reproducible from the config hash
+# and the master seed recorded in each manifest, so they do not belong in git.
+.cache/
+*.h5
+*.pkl
+*.manifest.json
+report.html
+figures/
+
+# Real datasets are large and often licence-restricted; never commit them.
+data/raw/
+data/processed/
+
+# macOS
+.DS_Store

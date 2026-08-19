@@ -1,0 +1,65 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "culturesim"
+version = "0.1.0"
+description = "Parameter-calibrated in-silico model of a dissociated neuronal culture on an MEA"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+authors = [{ name = "culture-sim contributors" }]
+keywords = ["neuroscience", "MEA", "brian2", "simulation-based-inference", "criticality"]
+
+# SPEC §2 requires pinned versions. These are exact rather than compatible-release
+# pins on purpose: a fitted posterior is only reproducible against the library
+# versions that produced it, and every run records these in its manifest.
+dependencies = [
+  "brian2==2.10.1",
+  "numpy==2.5.2",
+  "scipy==1.18.0",
+  "pandas==3.0.5",
+  "matplotlib==3.11.1",
+  "sbi==0.27.0",
+  "torch==2.13.0",
+  "powerlaw==2.0.0",
+  "pyyaml==6.0.3",
+  "h5py==3.16.0",
+  "pynwb==4.1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest==9.1.1",
+  "hypothesis==6.165.10",
+  "ruff==0.15.5",
+]
+
+[project.scripts]
+culture-sim = "culturesim.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["culturesim*"]
+
+[tool.setuptools.package-data]
+culturesim = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers --strict-config"
+markers = [
+  "slow: takes more than a few seconds (simulation-backed tests)",
+  "requires_data: needs a real dataset that is not in the repo",
+]
+filterwarnings = ["error::DeprecationWarning:culturesim.*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "NPY"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B011"]

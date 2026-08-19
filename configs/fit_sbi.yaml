@@ -1,0 +1,60 @@
+# Simulation-based inference configuration (SPEC §8.3).
+#
+# The posterior is the deliverable, not a point estimate. A flat marginal is a
+# finding (the data cannot constrain that parameter) and must be reported, not
+# hidden behind a MAP value.
+
+seed: 20250819
+
+prior:
+  # Uniform box over the 8 free parameters. Ranges live in
+  # configs/model_default.yaml under `priors` and are read from there so the two
+  # files cannot drift apart.
+  kind: uniform
+  from_model_config: configs/model_default.yaml
+
+simulator:
+  model_config: configs/model_default.yaml
+  observation_config: configs/observation.yaml
+  fingerprint_config: configs/fingerprint.yaml
+  duration_s: 300.0
+  n_workers: null # null -> cpu_count() - 1
+  # Draws whose simulation crashes or returns a non-finite fingerprint are
+  # recorded and excluded rather than silently replaced.
+  on_invalid: exclude
+
+inference:
+  method: SNPE_C
+  n_simulations: 5000 # SPEC §8.3: 3000-5000
+  n_rounds: 1 # amortised single round; >1 switches to sequential SNPE
+  density_estimator: nsf
+  embedding_net:
+    kind: mlp
+    hidden_layers: [128, 128]
+    output_dim: 32
+  training:
+    batch_size: 200
+    learning_rate: 0.0005
+    validation_fraction: 0.1
+    stop_after_epochs: 25
+    max_num_epochs: 500
+
+posterior:
+  n_samples: 10000
+  # Report pairwise correlations to expose parameter degeneracies (SPEC §8.3).
+  report_pairwise_correlations: true
+  # A marginal is called "identified" if its posterior std is below this
+  # fraction of the prior-range std. Stated explicitly so the README's
+  # identified/unidentified table is reproducible rather than eyeballed.
+  identifiability_std_ratio: 0.5
+
+posterior_predictive:
+  n_draws: 100
+  # Fraction of the posterior-predictive fingerprint ensemble that must bracket
+  # the real value for a statistic to count as reproduced.
+  coverage_interval: [5, 95]
+
+cache:
+  dir: .cache/sbi
+  # Simulation outputs are keyed by config hash so re-runs are cheap (SPEC §11).
+  enabled: true
