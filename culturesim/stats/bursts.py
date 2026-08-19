@@ -27,6 +27,8 @@ class Bursts:
     n_spikes: np.ndarray
     participation: np.ndarray  # fraction of electrodes contributing per burst
     threshold: float  # spikes/bin, from the surrogate null
+    # False when cl.analysis cannot ingest the recording (HD-MEA uint8 limit).
+    available: bool = True
 
     @property
     def durations(self) -> np.ndarray:
@@ -79,11 +81,16 @@ def detect_bursts(
         or np.unique(recording.channels).size < MIN_PARTICIPATING_ELECTRODES
     ):
         return _empty_bursts()
-    result = cl_analysis.analyse_network_bursts(
-        recording,
-        bin_size_sec=bin_width_s,
-        min_active_channels=MIN_PARTICIPATING_ELECTRODES,
-    )
+    try:
+        result = cl_analysis.analyse_network_bursts(
+            recording,
+            bin_size_sec=bin_width_s,
+            min_active_channels=MIN_PARTICIPATING_ELECTRODES,
+        )
+    except ValueError:
+        # cl-sdk==1.0.0 cannot losslessly store channel ids above 255, and criticality
+        # / connectivity also reject non-common layouts. Sentinel, not zero bursts.
+        return _unavailable_bursts()
     dump = result.model_dump()
     sampling_frequency = float(dump["metadata"]["sampling_frequency"])
     starts = np.asarray([burst["start_frame"] for burst in dump["bursts"]], dtype=np.float64)
@@ -104,6 +111,17 @@ def detect_bursts(
 def burst_stats(recording: SpikeRecording, rng: np.random.Generator) -> BurstStats:
     """Burst scalars plus the full IBI array for the fingerprint's histogram."""
     bursts = detect_bursts(recording, rng)
+    if not bursts.available:
+        nan = float("nan")
+        return BurstStats(
+            burst_rate_per_min=nan,
+            burst_duration_mean=nan,
+            burst_duration_std=nan,
+            burst_size_mean=nan,
+            burst_size_std=nan,
+            burst_participation_mean=nan,
+            ibi_seconds=np.array([], dtype=np.float64),
+        )
     durations = bursts.durations
     if bursts.n_bursts == 0:
         return BurstStats(
@@ -133,6 +151,18 @@ def _empty_bursts() -> Bursts:
         n_spikes=np.array([], dtype=np.int64),
         participation=np.array([], dtype=np.float64),
         threshold=float("nan"),
+        available=True,
+    )
+
+
+def _unavailable_bursts() -> Bursts:
+    return Bursts(
+        starts=np.array([], dtype=np.float64),
+        stops=np.array([], dtype=np.float64),
+        n_spikes=np.array([], dtype=np.int64),
+        participation=np.array([], dtype=np.float64),
+        threshold=float("nan"),
+        available=False,
     )
 
 

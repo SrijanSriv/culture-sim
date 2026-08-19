@@ -166,20 +166,24 @@ def _simulate(payload: dict[str, Any]) -> dict[str, Any]:
         }
 
         if payload["observation_config"] is None:
+            recording_metadata = {
+                # Flags this as pre-observation data. Statistics computed on it are
+                # not comparable to anything measured on an electrode array.
+                "observation": "none",
+                "duration_s": duration_s,
+                "seed": seed,
+                **diagnostics,
+            }
+            if params.simulation.record_neuron_positions:
+                recording_metadata["neuron_x_um"] = positions.x_um.tolist()
+                recording_metadata["neuron_y_um"] = positions.y_um.tolist()
             recording = SpikeRecording(
                 times=spike_times_s,
                 channels=spike_neurons.astype(np.int32),
                 n_channels=params.network.n_neurons,
                 duration=duration_s,
                 source="simulation-neuron-level",
-                metadata={
-                    # Flags this as pre-observation data. Statistics computed on it are
-                    # not comparable to anything measured on an electrode array.
-                    "observation": "none",
-                    "duration_s": duration_s,
-                    "seed": seed,
-                    **diagnostics,
-                },
+                metadata=recording_metadata,
             )
         else:
             observation = ObservationConfig.from_config(payload["observation_config"])

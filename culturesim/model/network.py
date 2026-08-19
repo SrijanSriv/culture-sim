@@ -216,8 +216,10 @@ def place_neurons(params: ModelParams, rng: np.random.Generator) -> NeuronPositi
     ``n_excitatory:`` are contiguous subgroups in Brian2.
     """
     network = params.network
-    x_um = rng.uniform(0.0, network.sheet_width_um, size=network.n_neurons)
-    y_um = rng.uniform(0.0, network.sheet_height_um, size=network.n_neurons)
+    # Electrode layouts are centred on the origin (see observation.yaml). The sheet
+    # must share that origin or the virtual MEA only sees one corner of the culture.
+    x_um = rng.uniform(-0.5, 0.5, size=network.n_neurons) * network.sheet_width_um
+    y_um = rng.uniform(-0.5, 0.5, size=network.n_neurons) * network.sheet_height_um
     is_excitatory = np.zeros(network.n_neurons, dtype=bool)
     is_excitatory[: network.n_excitatory] = True
     return NeuronPositions(x_um=x_um, y_um=y_um, is_excitatory=is_excitatory)

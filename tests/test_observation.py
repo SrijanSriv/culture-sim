@@ -133,3 +133,103 @@ def test_observe_output_writes_cl_h5_that_sdk_can_open(tmp_path) -> None:
     with recording_view(path) as view:
         assert view.attributes.channel_count == 64
         assert len(view.spikes) == recording.n_spikes
+
+
+def test_dead_electrodes_emit_no_spikes() -> None:
+    """SPEC §13 Task 2: a marked-dead site records nothing, even with a soma on it."""
+    layout = ElectrodeLayout.grid("tiny", 4, 4, 200.0)
+    config = ObservationConfig(
+        layout=layout,
+        per_neuron_sigma=0.0,
+        dead_electrode_fraction=0.0,
+        dead_electrode_indices=(0, 1),
+    )
+    # Neuron 0 sits on dead electrode 0; neuron 1 sits on live electrode 5.
+    recording = observe(
+        np.array([0.10, 0.20, 0.30, 0.40, 0.50, 0.60]),
+        np.array([0, 0, 0, 1, 1, 1]),
+        np.array([layout.x_um[0], layout.x_um[5]]),
+        np.array([layout.y_um[0], layout.y_um[5]]),
+        1.0,
+        config,
+        np.random.default_rng(0),
+    )
+    assert recording.metadata["dead_electrodes"] == [0, 1]
+    assert 0 not in recording.channels
+    assert 1 not in recording.channels
+    assert 5 in set(recording.channels.tolist())
+
+
+def test_neuron_sheet_shares_the_electrode_origin() -> None:
+    """A sheet in [0, W] against electrodes centred at 0 only observes one corner."""
+    from culturesim.model.network import place_neurons
+    from culturesim.model.params import ModelParams
+
+    params = ModelParams.load("model_default.yaml")
+    positions = place_neurons(params, np.random.default_rng(0))
+    half_w = params.network.sheet_width_um / 2.0
+    half_h = params.network.sheet_height_um / 2.0
+    assert positions.x_um.min() >= -half_w
+    assert positions.x_um.max() <= half_w
+    assert positions.y_um.min() >= -half_h
+    assert positions.y_um.max() <= half_h
+    for name in ("mcs_60", "hd_mea_1024"):
+        layout = ObservationConfig.load("observation.yaml", layout_name=name).layout
+        assert layout.x_um.min() >= -half_w
+        assert layout.x_um.max() <= half_w
+        assert layout.y_um.min() >= -half_h
+        assert layout.y_um.max() <= half_h
+
+
+def test_sixty_and_hd_mea_observations_yield_different_fingerprints() -> None:
+    """SPEC §13 Task 2: identical neuron spikes, different arrays, different vectors."""
+    from dataclasses import replace
+
+    from culturesim.stats.branching import naive_branching_ratio
+    from culturesim.stats.fingerprint import FingerprintSpec, compute_fingerprint
+    from culturesim.stats.rates import rate_stats
+
+    rng = np.random.default_rng(7)
+    n_neurons, duration_s, rate_hz = 80, 8.0, 8.0
+    counts = rng.poisson(rate_hz * duration_s, size=n_neurons)
+    times = np.concatenate([rng.uniform(0.0, duration_s, size=c) for c in counts])
+    neurons = np.repeat(np.arange(n_neurons), counts)
+    order = np.argsort(times, kind="stable")
+    times, neurons = times[order], neurons[order]
+    x_um = rng.uniform(-900.0, 900.0, size=n_neurons)
+    y_um = rng.uniform(-900.0, 900.0, size=n_neurons)
+
+    recordings = {}
+    for name in ("mcs_60", "hd_mea_1024"):
+        config = replace(
+            ObservationConfig.load("observation.yaml", layout_name=name),
+            dead_electrode_fraction=0.0,
+            dead_electrode_indices=(),
+        )
+        recordings[name] = observe(
+            times, neurons, x_um, y_um, duration_s, config, np.random.default_rng(11)
+        )
+
+    rec_60, rec_1024 = recordings["mcs_60"], recordings["hd_mea_1024"]
+    assert rec_60.n_channels == 60
+    assert rec_1024.n_channels == 1024
+    assert rec_60.n_spikes != rec_1024.n_spikes
+
+    rates_60, rates_1024 = rate_stats(rec_60), rate_stats(rec_1024)
+    assert rates_60.per_electrode_rates.size == 60
+    assert rates_1024.per_electrode_rates.size == 1024
+    # Denser arrays typically see a *higher* active fraction (more sites near a soma),
+    # so do not assert a direction -- only that the two observations disagree.
+    assert rates_60.active_electrode_fraction != pytest.approx(rates_1024.active_electrode_fraction)
+
+    spec = FingerprintSpec.load("fingerprint.yaml")
+    fp_60 = compute_fingerprint(rec_60, spec)
+    fp_1024 = compute_fingerprint(rec_1024, spec)
+    assert fp_60.names == fp_1024.names
+    assert not np.allclose(fp_60.values, fp_1024.values, equal_nan=True)
+    # Delegated burst analysis cannot ingest 1024 channels in cl-sdk==1.0.0.
+    assert np.isnan(fp_1024["burst_rate_per_min"])
+    assert np.isfinite(fp_60["rate_mean"])
+    # The naive branching estimator is the statistic that *should* change with
+    # electrode count; the figure documents that bias.
+    assert naive_branching_ratio(rec_60) != pytest.approx(naive_branching_ratio(rec_1024))
