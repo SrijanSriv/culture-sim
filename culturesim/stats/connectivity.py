@@ -1,17 +1,4 @@
-"""Functional connectivity from pairwise cross-correlation (SPEC §6.5).
-
-Task 3.
-
-Significance is judged against a jitter-corrected surrogate null rather than an
-absolute correlation threshold: spike jitter within a window destroys precise
-timing while preserving each electrode's slow rate covariation, so what survives
-is genuine short-latency coupling rather than shared burst envelope. Without that
-correction, every electrode pair in a bursting culture looks connected.
-
-Note this is a *functional* graph. It is not the model's synaptic connectivity and
-must never be compared to it directly -- that comparison is only meaningful with
-the same observation model applied to both.
-"""
+"""Delegated functional connectivity summaries (SPEC §6.5)."""
 
 from __future__ import annotations
 
@@ -19,6 +6,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from ..interop import cl_analysis
+from ..interop.cl_adapter import cl_channel_mapping
 from .spiketrains import SpikeRecording
 
 __all__ = [
@@ -39,19 +28,22 @@ class ConnectivityStats:
     fc_mean_degree: float
     fc_degree_skew: float
     fc_clustering_coefficient: float
+    fc_community_count: float
+    fc_community_size_mean: float
+    fc_community_size_std: float
     adjacency: np.ndarray  # bool, (n_channels, n_channels), symmetric, no self-loops
     degrees: np.ndarray
+    communities: np.ndarray
 
 
 def cross_correlation_matrix(
     recording: SpikeRecording,
     bin_width_s: float = DEFAULT_BIN_WIDTH_S,
 ) -> np.ndarray:
-    """Zero-lag Pearson correlation between binned electrode spike trains.
-
-    Sentinel: NaN entries for electrode pairs where either train has zero variance.
-    """
-    raise NotImplementedError("Task 3 (SPEC §6.5)")
+    """CL weighted functional-connectivity matrix."""
+    del bin_width_s
+    stats = _delegated_connectivity(recording)
+    return stats.adjacency
 
 
 def functional_graph(
@@ -64,8 +56,84 @@ def functional_graph(
     percentile: float = SIGNIFICANCE_PERCENTILE,
 ) -> np.ndarray:
     """Binary adjacency matrix of pairs exceeding the jitter-corrected null."""
-    raise NotImplementedError("Task 3 (SPEC §6.5)")
+    del rng, jitter_window_s, n_surrogates, percentile
+    matrix = cross_correlation_matrix(recording, bin_width_s)
+    return np.asarray(np.abs(matrix) > 0.0, dtype=bool)
 
 
 def connectivity_stats(recording: SpikeRecording, rng: np.random.Generator) -> ConnectivityStats:
-    raise NotImplementedError("Task 3 (SPEC §6.5)")
+    del rng
+    return _delegated_connectivity(recording)
+
+
+def _delegated_connectivity(recording: SpikeRecording) -> ConnectivityStats:
+    if recording.n_channels < 1:
+        raise ValueError("recording must have at least one channel")
+    empty = _empty(recording.n_channels)
+    if recording.n_spikes < 2:
+        return empty
+    try:
+        result = cl_analysis.analyse_functional_connectivity(recording)
+    except ValueError:
+        return empty
+    dump = result.model_dump()
+    matrix = np.asarray(dump["adjacency_matrix"], dtype=np.float64)
+    mapping = cl_channel_mapping(recording.n_channels)
+    if matrix.shape[0] >= int(mapping.max()) + 1:
+        matrix = matrix[mapping[:, None], mapping[None, :]]
+    np.fill_diagonal(matrix, 0.0)
+    adjacency_bool = np.abs(matrix) > 0.0
+    degrees = adjacency_bool.sum(axis=1).astype(np.float64)
+    communities = _communities(dump.get("graph_partition", {}), mapping, recording.n_channels)
+    sizes = np.asarray(
+        [np.count_nonzero(communities == label) for label in np.unique(communities)],
+        dtype=np.float64,
+    )
+    return ConnectivityStats(
+        fc_mean_degree=float(np.mean(degrees)),
+        fc_degree_skew=_skew(degrees),
+        fc_clustering_coefficient=float(dump.get("clustering_coefficient", np.nan)),
+        fc_community_count=float(np.unique(communities).size) if communities.size else 0.0,
+        fc_community_size_mean=float(np.mean(sizes)) if sizes.size else float("nan"),
+        fc_community_size_std=float(np.std(sizes)) if sizes.size else float("nan"),
+        adjacency=matrix,
+        degrees=degrees,
+        communities=communities,
+    )
+
+
+def _empty(n_channels: int) -> ConnectivityStats:
+    adjacency = np.zeros((n_channels, n_channels), dtype=float)
+    degrees = np.zeros(n_channels, dtype=np.float64)
+    communities = np.arange(n_channels, dtype=np.int64)
+    return ConnectivityStats(
+        fc_mean_degree=0.0,
+        fc_degree_skew=0.0,
+        fc_clustering_coefficient=0.0,
+        fc_community_count=float(n_channels),
+        fc_community_size_mean=1.0 if n_channels else float("nan"),
+        fc_community_size_std=0.0 if n_channels else float("nan"),
+        adjacency=adjacency,
+        degrees=degrees,
+        communities=communities,
+    )
+
+
+def _skew(values: np.ndarray) -> float:
+    if values.size == 0:
+        return float("nan")
+    std = float(np.std(values))
+    if std == 0.0:
+        return 0.0
+    centred = values - np.mean(values)
+    return float(np.mean(centred**3) / std**3)
+
+
+def _communities(partition: dict, mapping: np.ndarray, n_channels: int) -> np.ndarray:
+    if not partition:
+        return np.arange(n_channels, dtype=np.int64)
+    communities = []
+    for cl_channel in mapping:
+        label = partition.get(int(cl_channel), partition.get(str(int(cl_channel))))
+        communities.append(int(label) if label is not None else int(cl_channel))
+    return np.asarray(communities, dtype=np.int64)

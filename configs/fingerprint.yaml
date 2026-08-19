@@ -98,6 +98,9 @@ groups:
       - fc_mean_degree
       - fc_degree_skew
       - fc_clustering_coefficient
+      - fc_community_count
+      - fc_community_size_mean
+      - fc_community_size_std
 
 # Sentinel written into the vector when a statistic is undefined for a
 # recording (SPEC §12: empty / single-spike / single-electrode recordings must

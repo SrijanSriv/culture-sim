@@ -82,6 +82,26 @@ def test_no_global_rng_use_in_the_package() -> None:
     )
 
 
+def test_cl_analysis_imports_stay_inside_interop() -> None:
+    """SPEC §6.0.2: delegated CL calls are isolated behind one package boundary."""
+    offenders = []
+    for path in _package_sources():
+        if path.relative_to(PACKAGE_ROOT).parts[0] == "interop":
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.name == "cl.analysis" or alias.name.startswith("cl.analysis."):
+                        offenders.append(f"{path.relative_to(PACKAGE_ROOT)}:{node.lineno}")
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                if node.module == "cl.analysis" or node.module.startswith("cl.analysis."):
+                    offenders.append(f"{path.relative_to(PACKAGE_ROOT)}:{node.lineno}")
+    assert not offenders, "cl.analysis imports must stay in culturesim.interop:\n" + "\n".join(
+        offenders
+    )
+
+
 # -- seed derivation ------------------------------------------------------
 
 
@@ -197,7 +217,7 @@ def test_manifest_records_what_spec_11_requires(tmp_path) -> None:
 
 def test_tracked_package_versions_are_resolvable() -> None:
     versions = package_versions()
-    for name in ("numpy", "h5py", "brian2"):
+    for name in ("numpy", "h5py", "brian2", "cl-sdk"):
         assert versions[name] != "not-installed", f"{name} is a hard dependency (SPEC §2)"
 
 

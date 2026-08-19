@@ -53,7 +53,12 @@ def population_activity(
     bin_width_s: float = DEFAULT_BIN_WIDTH_S,
 ) -> np.ndarray:
     """Array-wide spike count per bin."""
-    raise NotImplementedError("Task 3 (SPEC §6.4)")
+    if bin_width_s <= 0:
+        raise ValueError(f"bin_width_s must be positive, got {bin_width_s}")
+    n_bins = max(1, int(np.ceil(recording.duration / bin_width_s)))
+    edges = np.linspace(0.0, n_bins * bin_width_s, n_bins + 1)
+    counts, _ = np.histogram(recording.times, bins=edges)
+    return counts.astype(np.float64)
 
 
 def mr_branching_ratio(
@@ -67,7 +72,63 @@ def mr_branching_ratio(
     Sentinel: NaN for ``m`` when the activity is too sparse for the regression.
     A Poisson process gives ``m ~ 0`` (SPEC §12).
     """
-    raise NotImplementedError("Task 3 (SPEC §6.4)")
+    activity = population_activity(recording, bin_width_s)
+    lags = np.arange(1, min(k_max, activity.size - 1) + 1, dtype=np.int64)
+    if lags.size == 0 or np.var(activity) <= 0:
+        empty = np.array([], dtype=np.float64)
+        return BranchingStats(
+            float("nan"),
+            float("nan"),
+            float("nan"),
+            naive_branching_ratio(recording),
+            lags,
+            empty,
+        )
+
+    demeaned = activity - np.mean(activity)
+    denom = float(np.dot(demeaned, demeaned))
+    autocorr = np.asarray(
+        [float(np.dot(demeaned[:-lag], demeaned[lag:]) / denom) for lag in lags],
+        dtype=np.float64,
+    )
+    if autocorr.size == 0 or not np.isfinite(autocorr[0]) or autocorr[0] < 0.05:
+        return BranchingStats(
+            branching_ratio_mr=0.0,
+            branching_mr_fit_r2=0.0,
+            autocorrelation_time_s=0.0,
+            branching_ratio_naive=naive_branching_ratio(recording, bin_width_s),
+            lags=lags,
+            autocorrelation=autocorr,
+        )
+
+    positive = np.isfinite(autocorr) & (autocorr > 0.0)
+    if np.count_nonzero(positive) < 2:
+        m = float(np.clip(autocorr[0], 0.0, 1.0))
+        return BranchingStats(
+            branching_ratio_mr=m,
+            branching_mr_fit_r2=float("nan"),
+            autocorrelation_time_s=_autocorr_time(m, bin_width_s),
+            branching_ratio_naive=naive_branching_ratio(recording, bin_width_s),
+            lags=lags,
+            autocorrelation=autocorr,
+        )
+
+    fit_lags = lags[positive].astype(np.float64)
+    fit_y = np.log(autocorr[positive])
+    slope, intercept = np.polyfit(fit_lags, fit_y, deg=1)
+    predicted = slope * fit_lags + intercept
+    ss_res = float(np.sum((fit_y - predicted) ** 2))
+    ss_tot = float(np.sum((fit_y - np.mean(fit_y)) ** 2))
+    r2 = 1.0 - ss_res / ss_tot if ss_tot > 0 else float("nan")
+    m = float(np.clip(np.exp(slope), 0.0, 1.0))
+    return BranchingStats(
+        branching_ratio_mr=m,
+        branching_mr_fit_r2=float(r2),
+        autocorrelation_time_s=_autocorr_time(m, bin_width_s),
+        branching_ratio_naive=naive_branching_ratio(recording, bin_width_s),
+        lags=lags,
+        autocorrelation=autocorr,
+    )
 
 
 def naive_branching_ratio(
@@ -81,4 +142,21 @@ def naive_branching_ratio(
     known ``m``, that this estimator's answer depends on the observed fraction
     while the MR estimator's does not.
     """
-    raise NotImplementedError("Task 3 (SPEC §6.4)")
+    activity = population_activity(recording, bin_width_s)
+    if activity.size < 2:
+        return float("nan")
+    ancestors = activity[:-1]
+    descendants = activity[1:]
+    mask = ancestors > 0
+    if not np.any(mask):
+        return float("nan")
+    active_fraction = float(np.mean(recording.spike_counts() > 0))
+    return float(np.sum(descendants[mask]) / np.sum(ancestors[mask]) * active_fraction)
+
+
+def _autocorr_time(m: float, bin_width_s: float) -> float:
+    if not np.isfinite(m) or m <= 0.0:
+        return float("nan")
+    if m >= 1.0:
+        return float("inf")
+    return float(-bin_width_s / np.log(m))

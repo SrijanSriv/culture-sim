@@ -311,13 +311,105 @@ def compute_fingerprint(
     recording: SpikeRecording,
     spec: FingerprintSpec | None = None,
 ) -> Fingerprint:
-    """Assemble the full fingerprint from a recording (SPEC §6.6).
+    """Assemble the full fingerprint from a recording (SPEC §6.6)."""
+    from .avalanche import avalanche_stats
+    from .branching import mr_branching_ratio
+    from .bursts import burst_stats
+    from .connectivity import connectivity_stats
+    from .rates import rate_stats
 
-    Implemented in Task 3. The signature is fixed now because the CLI, the
-    distance function and the SBI simulator all depend on it.
-    """
-    raise NotImplementedError(
-        "compute_fingerprint is Task 3 (SPEC §6). The Fingerprint container, "
-        "FingerprintSpec and the frozen name order are in place; the per-group "
-        "statistics in culturesim/stats/ are the remaining work."
+    spec = FingerprintSpec.load() if spec is None else spec
+    rng = np.random.default_rng(0)
+
+    rates = rate_stats(recording)
+    bursts = burst_stats(recording, rng)
+    avalanches = avalanche_stats(recording)
+    branching = mr_branching_ratio(recording)
+    connectivity = connectivity_stats(recording, rng)
+
+    scalars: dict[str, float] = {}
+    distributions: dict[str, np.ndarray] = {
+        "ibi_seconds": bursts.ibi_seconds,
+        "avalanche_size": avalanches.avalanches.sizes,
+        "avalanche_duration": avalanches.avalanches.durations,
+    }
+    for stats_obj in (rates, bursts, avalanches, branching, connectivity):
+        for key, value in vars(stats_obj).items():
+            if key in distributions or isinstance(value, np.ndarray):
+                continue
+            try:
+                scalars[key] = float(value)
+            except (TypeError, ValueError):
+                continue
+
+    values = []
+    for name in spec.names:
+        if name in scalars:
+            values.append(scalars[name])
+            continue
+        quantile = _quantile_name(name, spec.quantile_levels)
+        if quantile is not None:
+            stat, level = quantile
+            values.append(_quantile(distributions.get(stat), level, spec.undefined_value))
+            continue
+        histogram = _histogram_name(name, spec.histograms)
+        if histogram is not None:
+            stat, index = histogram
+            values.append(
+                _histogram_value(distributions.get(stat), spec.histogram_for(stat), index)
+            )
+            continue
+        values.append(spec.undefined_value)
+
+    return Fingerprint(
+        values=np.asarray(values, dtype=np.float64),
+        names=spec.names,
+        version=spec.version,
+        metadata={"source": recording.source, "n_spikes": recording.n_spikes},
     )
+
+
+def _quantile_name(
+    name: str,
+    quantile_levels: Mapping[str, tuple[float, ...]],
+) -> tuple[str, float] | None:
+    for stat, levels in quantile_levels.items():
+        prefix = f"{stat}_p"
+        if not name.startswith(prefix):
+            continue
+        suffix = name.removeprefix(prefix)
+        for level in levels:
+            if suffix == f"{int(round(level)):02d}":
+                return stat, level
+    return None
+
+
+def _quantile(values: np.ndarray | None, level: float, undefined: float) -> float:
+    if values is None:
+        return undefined
+    values = np.asarray(values, dtype=np.float64)
+    values = values[np.isfinite(values)]
+    return float(np.percentile(values, level)) if values.size else undefined
+
+
+def _histogram_name(
+    name: str,
+    histograms: tuple[HistogramSpec, ...],
+) -> tuple[str, int] | None:
+    for histogram in histograms:
+        prefix = f"{histogram.stat}_hist_"
+        if name.startswith(prefix):
+            return histogram.stat, int(name.removeprefix(prefix))
+    return None
+
+
+def _histogram_value(values: np.ndarray | None, histogram: HistogramSpec, index: int) -> float:
+    if values is None:
+        return float("nan")
+    values = np.asarray(values, dtype=np.float64)
+    values = values[np.isfinite(values) & (values > 0)]
+    if values.size == 0:
+        return float("nan")
+    density = histogram.normalize == "density"
+    counts, _ = np.histogram(values, bins=histogram.edges, density=density)
+    return float(counts[index])

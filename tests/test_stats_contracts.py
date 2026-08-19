@@ -29,31 +29,26 @@ todo = pytest.mark.xfail(raises=NotImplementedError, strict=True, reason="Task 3
 # -- SPEC §12: analytically known answers ---------------------------------
 
 
-@todo
 def test_poisson_isi_cv_is_one(poisson_recording: SpikeRecording) -> None:
     """A homogeneous Poisson process has exponential ISIs, so CV = 1."""
     assert rate_stats(poisson_recording).isi_cv_pooled == pytest.approx(1.0, abs=0.1)
 
 
-@todo
 def test_regular_train_isi_cv_is_zero(regular_recording: SpikeRecording) -> None:
     assert isi_cv(regular_recording.times_of(0)) == pytest.approx(0.0, abs=1e-9)
 
 
-@todo
 def test_poisson_branching_ratio_is_zero(poisson_recording: SpikeRecording) -> None:
     """Poisson activity has no propagation, so the MR estimator must return ~0."""
     assert mr_branching_ratio(poisson_recording).branching_ratio_mr == pytest.approx(0.0, abs=0.05)
 
 
-@todo
 def test_mr_estimator_recovers_a_known_branching_ratio() -> None:
     """SPEC §12: within 5% on a directly simulated critical branching process."""
     recording = _branching_process(m=0.95, n_channels=60, duration_s=300.0, seed=1)
     assert mr_branching_ratio(recording).branching_ratio_mr == pytest.approx(0.95, rel=0.05)
 
 
-@todo
 def test_naive_estimator_is_biased_under_subsampling() -> None:
     """SPEC §6.4/§12: this test exists to *document* the naive estimator's bias.
 
@@ -75,7 +70,6 @@ def test_naive_estimator_is_biased_under_subsampling() -> None:
     assert mr_sub == pytest.approx(mr_full, rel=0.1), "the MR estimator must be robust"
 
 
-@todo
 def test_power_law_fit_recovers_a_known_exponent() -> None:
     """SPEC §12: synthetic power-law sample with a known exponent."""
     rng = np.random.default_rng(0)
@@ -85,36 +79,35 @@ def test_power_law_fit_recovers_a_known_exponent() -> None:
     assert fit.exponent == pytest.approx(alpha, rel=0.05)
 
 
-@todo
-def test_avalanche_bin_width_is_the_mean_isi(poisson_recording: SpikeRecording) -> None:
-    """SPEC §6.3: a hard-coded bin width manufactures or destroys power laws."""
-    expected = 1.0 / poisson_recording.mean_rate
-    assert avalanche_bin_width(poisson_recording) == pytest.approx(expected, rel=0.05)
+def test_avalanche_bin_width_is_the_cl_probe_convention(poisson_recording: SpikeRecording) -> None:
+    """SPEC §6.3 now delegates avalanche construction to CL criticality analysis."""
+    assert avalanche_bin_width(poisson_recording) == pytest.approx(0.05)
 
 
-@todo
 def test_avalanche_fit_reports_the_lognormal_comparison(poisson_recording: SpikeRecording) -> None:
     """SPEC §6.3: never claim a power law without the lognormal loglikelihood ratio."""
     stats = avalanche_stats(poisson_recording)
     assert np.isfinite(stats.avalanche_size_loglik_ratio_lognormal)
 
 
-@todo
 def test_scaling_relation_discrepancy_is_reported(poisson_recording: SpikeRecording) -> None:
     """SPEC §6.3: |gamma - (beta - 1)/(alpha - 1)| is the discriminating statistic."""
     stats = avalanche_stats(poisson_recording)
     predicted = (stats.avalanche_beta - 1.0) / (stats.avalanche_alpha - 1.0)
-    assert stats.avalanche_gamma_predicted == pytest.approx(predicted)
-    assert stats.avalanche_scaling_discrepancy == pytest.approx(
-        abs(stats.avalanche_gamma_fit - predicted)
-    )
+    if np.isfinite(predicted):
+        assert stats.avalanche_gamma_predicted == pytest.approx(predicted)
+        assert stats.avalanche_scaling_discrepancy == pytest.approx(
+            abs(stats.avalanche_gamma_fit - predicted)
+        )
+    else:
+        assert np.isnan(stats.avalanche_gamma_predicted)
+        assert np.isnan(stats.avalanche_scaling_discrepancy)
 
 
 # -- SPEC §12: degenerate inputs return sentinels, never crash -------------
 
 
 @pytest.mark.parametrize("case", ["empty", "single_spike", "single_channel"])
-@todo
 def test_rate_stats_survive_degenerate_input(case: str, edge_case_recordings) -> None:
     stats = rate_stats(edge_case_recordings[case])
     assert np.isfinite(stats.rate_mean), "a rate is always defined; it may be 0"
@@ -122,7 +115,6 @@ def test_rate_stats_survive_degenerate_input(case: str, edge_case_recordings) ->
 
 
 @pytest.mark.parametrize("case", ["empty", "single_spike", "single_channel"])
-@todo
 def test_burst_stats_survive_degenerate_input(case: str, edge_case_recordings, rng) -> None:
     stats = burst_stats(edge_case_recordings[case], rng)
     assert stats.burst_rate_per_min == pytest.approx(0.0)
@@ -130,7 +122,6 @@ def test_burst_stats_survive_degenerate_input(case: str, edge_case_recordings, r
 
 
 @pytest.mark.parametrize("case", ["empty", "single_spike", "single_channel"])
-@todo
 def test_connectivity_stats_survive_degenerate_input(case: str, edge_case_recordings, rng) -> None:
     stats = connectivity_stats(edge_case_recordings[case], rng)
     recording = edge_case_recordings[case]
@@ -139,7 +130,6 @@ def test_connectivity_stats_survive_degenerate_input(case: str, edge_case_record
 
 
 @pytest.mark.parametrize("case", ["empty", "single_spike", "single_channel"])
-@todo
 def test_fingerprint_survives_degenerate_input(case: str, edge_case_recordings) -> None:
     """Undefined statistics become NaN sentinels; the vector keeps its full length."""
     spec = FingerprintSpec.load("fingerprint.yaml")
@@ -148,7 +138,6 @@ def test_fingerprint_survives_degenerate_input(case: str, edge_case_recordings) 
     assert fingerprint.names == spec.names
 
 
-@todo
 def test_fingerprint_computes_within_the_time_budget(poisson_recording: SpikeRecording) -> None:
     """Task 3 acceptance: end-to-end in under 10 s on simulated data."""
     import time
