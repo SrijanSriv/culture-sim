@@ -360,10 +360,14 @@ def _detach_sbi(args: argparse.Namespace, config: dict[str, Any], n_sims: int) -
     base = ModelParams.load(config["simulator"]["model_config"])
     duration_s = float(config["simulator"].get("duration_s", base.simulation.duration_s))
 
-    culture_sim = Path(sys.executable).resolve().parent / "culture-sim"
+    # Do not Path.resolve() sys.executable: on macOS the venv python is a symlink
+    # into Frameworks, and resolve() would look for culture-sim next to the system
+    # interpreter instead of inside .venv/bin.
+    venv_bin = Path(sys.executable).parent
+    culture_sim = venv_bin / "culture-sim"
     if not culture_sim.exists():
         raise FileNotFoundError(
-            f"cannot find culture-sim next to {sys.executable}; is the package installed editable?"
+            f"cannot find culture-sim in {venv_bin}; is the package installed editable?"
         )
     worker_argv = [
         str(culture_sim),
