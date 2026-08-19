@@ -174,6 +174,9 @@ def to_cl_h5(
         writer.write_spikes(spikes)
     writer.update_attributes(attrs)
     writer.stop()
+    # RecordingWriter.stop() can return while the PyTables writer thread still
+    # holds the HDF5 lock (seen on the largest Wagenaar files). Retry the sidecar
+    # append until the lock drops rather than failing the fingerprint.
     _write_identity_sidecar(path, recording)
     return path
 
@@ -183,17 +186,29 @@ def _default_waveform() -> np.ndarray:
 
 
 def _write_identity_sidecar(path: Path, recording: SpikeRecording) -> None:
+    import time
+
     import h5py
 
-    with h5py.File(path, "a") as handle:
-        group = handle.create_group("culture_sim_spike_recording")
-        group.attrs["schema_version"] = 1
-        group.attrs["n_channels"] = recording.n_channels
-        group.attrs["duration"] = recording.duration
-        group.attrs["source"] = recording.source
-        group.attrs["metadata_json"] = json.dumps(recording.metadata, sort_keys=True)
-        group.create_dataset("times", data=recording.times, dtype="f8")
-        group.create_dataset("channels", data=recording.channels, dtype="i4")
+    last_error: OSError | None = None
+    for _attempt in range(40):
+        try:
+            with h5py.File(path, "a") as handle:
+                if "culture_sim_spike_recording" in handle:
+                    return
+                group = handle.create_group("culture_sim_spike_recording")
+                group.attrs["schema_version"] = 1
+                group.attrs["n_channels"] = recording.n_channels
+                group.attrs["duration"] = recording.duration
+                group.attrs["source"] = recording.source
+                group.attrs["metadata_json"] = json.dumps(recording.metadata, sort_keys=True)
+                group.create_dataset("times", data=recording.times, dtype="f8")
+                group.create_dataset("channels", data=recording.channels, dtype="i4")
+            return
+        except OSError as exc:
+            last_error = exc
+            time.sleep(0.25)
+    raise RuntimeError(f"could not append identity sidecar to {path}: {last_error}")
 
 
 def from_cl_h5(path: str | Path) -> SpikeRecording:

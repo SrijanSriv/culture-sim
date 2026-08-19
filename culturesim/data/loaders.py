@@ -46,6 +46,7 @@ __all__ = [
     "WAGENAAR_NOMINAL_DURATION_S",
     "WAGENAAR_BASE_URL",
     "WAGENAAR_DEFAULT_RELATIVE",
+    "WAGENAAR_SCALE_RELATIVES",
     "parse_wagenaar_filename",
     "wagenaar_cache_path",
     "fetch_wagenaar",
@@ -195,6 +196,16 @@ WAGENAAR_UV_LSB = 0.3335
 WAGENAAR_BASE_URL = "https://neurodatasharing.bme.gatech.edu/development-data/"
 WAGENAAR_DEFAULT_RELATIVE = "simple-text/daily/spont/dense/1-1-14.spk.txt.bz2"
 WAGENAAR_CACHE_DIR = Path("data/raw/wagenaar2006")
+# DIV-14 dense recordings from distinct platings, used as the across-culture
+# scale for fingerprint distance (SPEC §8.1). The fitting target (1-1-14) is
+# included; the scale is the spread between cultures, not a leave-one-out.
+WAGENAAR_SCALE_RELATIVES: tuple[str, ...] = (
+    "simple-text/daily/spont/dense/1-1-14.spk.txt.bz2",
+    "simple-text/daily/spont/dense/1-2-14.spk.txt.bz2",
+    "simple-text/daily/spont/dense/2-1-14.spk.txt.bz2",
+    "simple-text/daily/spont/dense/3-5-14.spk.txt.bz2",
+    "simple-text/daily/spont/dense/4-1-14.spk.txt.bz2",
+)
 
 _WAGENAAR_FILENAME = re.compile(
     r"(?P<plating>\d+)-(?P<culture>\d+)-(?P<div>\d+)"

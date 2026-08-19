@@ -128,17 +128,19 @@ def test_fit_without_a_cached_dataset_is_a_missing_file(cli_workspace, capsys) -
     assert "fetch_wagenaar" in message
 
 
-def test_fit_loads_a_local_wagenaar_file_then_hits_task_5(cli_workspace, capsys, tmp_path) -> None:
-    """Task 4 is done; the coarse optimiser is Task 5."""
+def test_fit_loads_a_local_wagenaar_file_then_needs_scale(cli_workspace, capsys, tmp_path) -> None:
+    """A single recording is not enough to z-score (SPEC §8.1, §14)."""
     import bz2
 
-    from culturesim.cli import EXIT_NOT_IMPLEMENTED, main
+    from culturesim.cli import EXIT_FAILED, main
 
     path = tmp_path / "1-1-14.spk.txt.bz2"
     path.write_bytes(bz2.compress(b"0.1 0\n0.2 1\n"))
     exit_code = main(["fit", "coarse", "--data", str(path), "--out", "c.json"])
-    assert exit_code == EXIT_NOT_IMPLEMENTED
-    assert "Task 5" in capsys.readouterr().err
+    assert exit_code == EXIT_FAILED
+    message = capsys.readouterr().err
+    assert "error:" in message
+    assert "across-culture" in message
 
 
 def test_missing_required_argument_is_a_usage_error() -> None:

@@ -230,12 +230,37 @@ def _load_target_fingerprint(data: str) -> Any:
 
 def _cmd_fit_coarse(args: argparse.Namespace) -> int:
     from .config import load_config
-    from .fit.coarse import coarse_fit
+    from .fit.coarse import coarse_fit, scale_from_wagenaar
+    from .manifest import record_run
     from .model.params import ModelParams
 
+    started = time.time()
     base = ModelParams.from_config(load_config(args.config))
+    if args.seed is not None:
+        from dataclasses import replace
+
+        base = replace(base, seed=int(args.seed))
     target = _load_target_fingerprint(args.data)
-    coarse_fit(target=target, base=base)
+    scale = scale_from_wagenaar(fetch=False)
+    figure_path = Path("figures") / "task5_distance_landscape.png"
+    result = coarse_fit(
+        target=target,
+        base=base,
+        scale=scale,
+        figure_path=figure_path,
+    )
+    result.write_json(args.out)
+    record_run(
+        command="fit coarse",
+        configs={"model": base.to_config()},
+        master_seed=base.seed,
+        started_at=started,
+        output=str(args.out),
+    ).write(args.out.with_suffix(".manifest.json"))
+    print(
+        f"wrote {args.out}  baseline={result.baseline_distance:.3g}  "
+        f"best={result.best_distance:.3g}  improvement={result.improvement_fraction:.0%}"
+    )
     return EXIT_OK
 
 

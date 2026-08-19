@@ -55,9 +55,9 @@ The two are complementary, and this is the intended long-term integration path: 
 
 ## Current status
 
-**Tasks 0–4 are complete. Nothing has been fitted, and no claim in `SPEC.md`
-§15 is yet supported by evidence.** The table below is the honest state of the build;
-`SPEC.md` §13 has the acceptance criterion for each task.
+**Tasks 0–5 are complete. A coarse point estimate exists; no posterior and no claim
+in `SPEC.md` §15 is yet supported by evidence.** The table below is the honest state
+of the build; `SPEC.md` §13 has the acceptance criterion for each task.
 
 | Task | What it covers | State |
 |---|---|---|
@@ -67,7 +67,7 @@ The two are complementary, and this is the intended long-term integration path: 
 | 2 | Virtual MEA observation model + CL adapter | **Done** (60-vs-1024 figure; dead electrodes; HD-MEA CL stats blocked by `cl-sdk==1.0.0` uint8 channel ids) |
 | 3 | Statistics and the frozen fingerprint | **Done** (66 statistics, version 1.0.0, hash `603d25df56e7`) |
 | 4 | Real data loaders | **Done** (`load_wagenaar`; 1-1-14 yields a complete 66-stat fingerprint; CL vs Wagenaar burst defs disagree — see below) |
-| 5 | Coarse fit | Not started |
+| 5 | Coarse fit | **Done** (distance 4.50 → 1.29, **71%** improvement; landscape in `figures/task5_distance_landscape.png`) |
 | 6 | SBI posterior | Not started |
 | 7 | Validation suite | Not started |
 | 8 | HTML report | Not started |
@@ -129,11 +129,27 @@ count, DIV metadata from the filename, and a complete fingerprint are the
 loader checks. `load_dandi_nwb` stays unimplemented: DANDI 001603 is the
 3-D comparison point, not the fitting target.
 
-Fit commands now reach Task 5:
+### Coarse fit (Task 5)
+
+`culture-sim fit coarse --data wagenaar2006 --out output/coarse.json` against
+1-1-14, with across-culture z-scoring from five DIV-14 dense recordings
+(`scripts/fetch_wagenaar.py --scale`). Measured at 60 s biological per draw
+(same duration for baseline and fit):
+
+| | distance |
+|---|---|
+| Task 1 hand-tuned baseline | 4.50 |
+| Grid best (`w_e=0.7`, `g=2.0`, `tau_rec=600`) | 2.56 |
+| Nelder–Mead point estimate | **1.29** (**71%** vs baseline; SPEC needs ≥50%) |
+
+The landscape figure is `figures/task5_distance_landscape.png`. Half the 36-cell
+grid returned non-finite distances (crashed sims or undefined fingerprints);
+the finite half still found a bursting neighbourhood. The point estimate is a
+starting point for SBI, not a result — Task 6 owns the posterior.
 
 ```
-$ culture-sim fit coarse --data wagenaar2006 --out coarse.json
-not implemented: Task 5 (SPEC §8.2)
+$ culture-sim fit sbi --data wagenaar2006 --n-sims 3000 --out posterior.pkl
+not implemented: Task 6 (SPEC §8.3)
 ```
 
 ---

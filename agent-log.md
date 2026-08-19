@@ -8,41 +8,49 @@ Newest entries at the top.
 
 ---
 
+## 2026-08-20 — Task 5 coarse fit
+
+Agent: Cursor Grok. Branch `main`. SPEC §13 Task 5.
+
+Implemented fingerprint distance (§8.1) with across-culture `ScaleReference`
+(z-score scalars; Wasserstein on histogram bins; `UNDEFINED_Z=5` when the target
+has a statistic and the sim does not). Coarse fit (§8.2): 4×3×3 grid over
+`w_e`/`g`/`tau_rec`, then Nelder–Mead on the unit prior hypercube. Biological
+duration per draw is **60 s** (documented deviation from the 300 s Task 1
+budget — O(10²) sims would not finish otherwise; baseline and fitted point use
+the same duration).
+
+Acceptance run (`culture-sim fit coarse --data wagenaar2006`, ~45 min wall):
+
+- scale: 5 DIV-14 cultures (`1-1-14`, `1-2-14`, `2-1-14`, `3-5-14`, `4-1-14`)
+- baseline distance **4.50** (Task 1 hand-tune)
+- grid best **2.56** at `w_e=0.7`, `g=2.0`, `tau_rec=600`
+- Nelder–Mead best **1.29** → **71%** improvement (PASS ≥50%)
+- landscape: `figures/task5_distance_landscape.png`
+- 18/36 grid cells non-finite (`n_failed=18`); finite half still found a
+  bursting neighbourhood
+
+Also fixed a CL H5 sidecar race: `RecordingWriter.stop()` can return while
+PyTables still holds the file lock; `_write_identity_sidecar` retries. Dropped
+`6-1-14` from the scale set (2.4 MB) after it tripped that lock once.
+
+Progress prints are sparse during `run_many` — a quiet terminal for tens of
+minutes is normal, not a hang. pytest related: distance/coarse/cli green.
+
+### Still open
+
+1. Task 6: SBI posterior (≥3000 sims, marginals, PPC).
+
+---
+
 ## 2026-08-19 — Task 4 Wagenaar loader
 
 Agent: Cursor Grok. Branch `main`. SPEC §13 Task 4.
 
-`load_wagenaar` reads `.spk.txt.bz2` (`time_seconds channel`), splits channel 60
-as a stimulus marker, recovers plating/culture/DIV from the filename, and pads
-duration to 1800 s only when the last spike falls inside the nominal 30 min
-window. Files that run longer keep the observed last-spike time.
-
-Default cache file `data/raw/wagenaar2006/1-1-14.spk.txt.bz2` (fetch with
-`scripts/fetch_wagenaar.py`; gitignored):
-
-- 224,547 electrode spikes, 0 stim events, 60 channels, DIV 14
-- duration **2716 s** (~45 min, not the paper's ~30 min daily session)
-- rate mean 1.38 Hz/electrode, active fraction 0.93
-- complete fingerprint: **66/66 defined**, 0 undefined
-- CL burst stats: 126.7 bursts/min, median IBI **0.30 s**, mean duration 0.42 s
-
-IBI 0.3 s vs Wagenaar 2006's published 1–300 s is a **detector mismatch**.
-Fingerprint bursts come from CL `analyse_network_bursts` (50 ms bins, 3 Hz
-onset), which fragments their longer network bursts. SPEC §6.0 forbids
-substituting a Wagenaar-like detector. `scripts/compare_wagenaar.py` prints
-both tables; exit code follows the loader checks, not the literature IBI.
-
-`load_dandi_nwb` remains `NotImplementedError`. DANDI 001603 is a 3-D organoid
-comparison point, not the fitting target.
-
-CLI: `culture-sim fit coarse --data wagenaar2006` now loads (or errors with
-`fetch_wagenaar` if the cache is missing) and then hits Task 5. pytest: **170
-passed**.
-
-### Still open
-
-1. Task 5: coarse fit (§8.1–8.2). Distance to the real fingerprint must drop
-   by ≥50% vs the Task 1 hand-tuned parameters; 2-D distance-landscape figure.
+`load_wagenaar` reads `.spk.txt.bz2`, splits channel 60 as stim, recovers
+plating/culture/DIV from the filename. Default `1-1-14`: 224,547 spikes,
+duration **2716 s**, complete 66-stat fingerprint. CL median IBI 0.30 s vs
+Wagenaar published 1–300 s is a detector mismatch (documented).
 
 ---
 
