@@ -12,6 +12,39 @@ Newest entries at the top.
 
 ---
 
+## 2026-08-19 — Task 4 Wagenaar loader (full measured table)
+
+Agent: Cursor Grok. Branch `main`. SPEC §13 Task 4.
+
+`load_wagenaar` reads `.spk.txt.bz2` (`time_seconds channel`), splits channel 60
+as a stimulus marker, recovers plating/culture/DIV from the filename, and pads
+duration to 1800 s only when the last spike falls inside the nominal 30 min
+window. Files that run longer keep the observed last-spike time.
+
+Default cache file `data/raw/wagenaar2006/1-1-14.spk.txt.bz2` (fetch with
+`scripts/fetch_wagenaar.py`; gitignored):
+
+- 224,547 electrode spikes, 0 stim events, 60 channels, DIV 14
+- duration **2716 s** (~45 min, not the paper's ~30 min daily session)
+- rate mean 1.38 Hz/electrode, active fraction 0.93
+- complete fingerprint: **66/66 defined**, 0 undefined
+- CL burst stats: 126.7 bursts/min, median IBI **0.30 s**, mean duration 0.42 s
+
+IBI 0.3 s vs Wagenaar 2006's published 1–300 s is a **detector mismatch**.
+Fingerprint bursts come from CL `analyse_network_bursts` (50 ms bins, 3 Hz
+onset), which fragments their longer network bursts. SPEC §6.0 forbids
+substituting a Wagenaar-like detector. `scripts/compare_wagenaar.py` prints
+both tables; exit code follows the loader checks, not the literature IBI.
+
+`load_dandi_nwb` remains `NotImplementedError`. DANDI 001603 is a 3-D organoid
+comparison point, not the fitting target.
+
+CLI: `culture-sim fit coarse --data wagenaar2006` now loads (or errors with
+`fetch_wagenaar` if the cache is missing) and then hits Task 5. pytest: **170
+passed**.
+
+---
+
 ## 2026-08-19 — commit the parallel Task 0.5–4 work
 
 Agent: Cursor Grok. Branch `main`.
