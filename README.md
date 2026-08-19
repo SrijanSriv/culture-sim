@@ -148,9 +148,22 @@ the finite half still found a bursting neighbourhood. The point estimate is a
 starting point for SBI, not a result — Task 6 owns the posterior.
 
 ```
-$ culture-sim fit sbi --data wagenaar2006 --n-sims 3000 --out posterior.pkl
-not implemented: Task 6 (SPEC §8.3)
+$ culture-sim fit sbi --data wagenaar2006 --n-sims 3000 --out output/posterior.pkl --detach
 ```
+
+Task 6 is built to run unattended. `--detach` starts the campaign in the
+background and returns immediately. Progress lives in `output/task6_status.json`;
+the README Task 6 row is rewritten after every batch and again on completion
+(identified / unidentified parameters). Check later with:
+
+```
+$ .venv/bin/python scripts/check_task6.py
+```
+
+Sims use 60 s biological time per draw (same as Task 5; edit
+`configs/fit_sbi.yaml` `simulator.duration_s` for 300 s). Expect hours, not
+minutes. A killed run resumes from `output/posterior.checkpoint.npz` unless you
+pass `--no-resume`.
 
 ---
 

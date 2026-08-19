@@ -103,13 +103,15 @@ def test_documented_invocations_reach_a_handler(argv: list[str], cli_workspace, 
     distinct from failure on purpose: a half-built pipeline should not look broken, and
     a broken one should not look unbuilt.
     """
+    if argv[0] == "validate":
+        # validate requires an on-disk posterior; create a stub so Task 7 is reached.
+        (cli_workspace / "posterior.pkl").write_bytes(b"stub")
     exit_code = main(argv)
     if argv[0] in {"simulate", "fingerprint"}:
         assert exit_code == EXIT_OK
         assert "wrote" in capsys.readouterr().out
     elif argv[0] == "fit":
-        # The Wagenaar loader is in; without a cached recording this is a missing-file
-        # error (exit 1), not "not implemented". Task 5 still raises if a file exists.
+        # Wagenaar loader / scale requirements fail without data/raw (exit 1).
         assert exit_code == EXIT_FAILED
         assert "error:" in capsys.readouterr().err
     else:

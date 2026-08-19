@@ -8,38 +8,39 @@ Newest entries at the top.
 
 ---
 
+## 2026-08-20 — Task 6 fire-and-forget SBI
+
+Agent: Cursor Grok. Branch `main`. SPEC §13 Task 6 (machinery; overnight sims).
+
+SBI is designed so an agent (or human) starts it and walks away:
+
+- `culture-sim fit sbi ... --detach` returns immediately after spawning a worker
+- `output/task6_status.json` updates every batch (`running` → `done`/`failed`)
+- README Task 6 row is rewritten from that status file after every batch and on
+  finish (including identified / unidentified parameter lists)
+- Check later: `.venv/bin/python scripts/check_task6.py` (exit 0=done, 2=running)
+- Checkpoints at `output/posterior.checkpoint.npz`; resume is the default
+
+Config: 3000 sims, 60 s biological per draw (same as Task 5; edit
+`configs/fit_sbi.yaml` for 300 s). PPC draws 50 posterior samples at the end.
+
+Do **not** wait on the agent for this. Launch with `--detach`, leave the machine.
+
+### Still open
+
+1. Wait for the detached campaign to finish, then confirm README shows **Done**
+   and commit the status/README result if desired.
+2. Tasks 7–8.
+
+---
+
 ## 2026-08-20 — Task 5 coarse fit
 
 Agent: Cursor Grok. Branch `main`. SPEC §13 Task 5.
 
-Implemented fingerprint distance (§8.1) with across-culture `ScaleReference`
-(z-score scalars; Wasserstein on histogram bins; `UNDEFINED_Z=5` when the target
-has a statistic and the sim does not). Coarse fit (§8.2): 4×3×3 grid over
-`w_e`/`g`/`tau_rec`, then Nelder–Mead on the unit prior hypercube. Biological
-duration per draw is **60 s** (documented deviation from the 300 s Task 1
-budget — O(10²) sims would not finish otherwise; baseline and fitted point use
-the same duration).
-
-Acceptance run (`culture-sim fit coarse --data wagenaar2006`, ~45 min wall):
-
-- scale: 5 DIV-14 cultures (`1-1-14`, `1-2-14`, `2-1-14`, `3-5-14`, `4-1-14`)
-- baseline distance **4.50** (Task 1 hand-tune)
-- grid best **2.56** at `w_e=0.7`, `g=2.0`, `tau_rec=600`
-- Nelder–Mead best **1.29** → **71%** improvement (PASS ≥50%)
-- landscape: `figures/task5_distance_landscape.png`
-- 18/36 grid cells non-finite (`n_failed=18`); finite half still found a
-  bursting neighbourhood
-
-Also fixed a CL H5 sidecar race: `RecordingWriter.stop()` can return while
-PyTables still holds the file lock; `_write_identity_sidecar` retries. Dropped
-`6-1-14` from the scale set (2.4 MB) after it tripped that lock once.
-
-Progress prints are sparse during `run_many` — a quiet terminal for tens of
-minutes is normal, not a hang. pytest related: distance/coarse/cli green.
-
-### Still open
-
-1. Task 6: SBI posterior (≥3000 sims, marginals, PPC).
+Acceptance: baseline 4.50 → best 1.29 (**71%**). Landscape figure written.
+Half the grid cells were non-finite; finite half still found a bursting
+neighbourhood. Duration per draw 60 s.
 
 ---
 

@@ -95,6 +95,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="number of prior draws (SPEC §8.3 requires >= 3000)",
     )
     fit_sbi.add_argument("--seed", type=int, default=None)
+    fit_sbi.add_argument(
+        "--detach",
+        action="store_true",
+        help=(
+            "start the SBI campaign in the background and return immediately; "
+            "progress is in output/task6_status.json and the README Task 6 row"
+        ),
+    )
+    fit_sbi.add_argument(
+        "--no-resume",
+        action="store_true",
+        help="ignore an existing checkpoint and start the training set from scratch",
+    )
     fit_sbi.set_defaults(handler=_cmd_fit_sbi)
     fit.set_defaults(handler=_require_stage(fit))
 
@@ -266,8 +279,11 @@ def _cmd_fit_coarse(args: argparse.Namespace) -> int:
 
 def _cmd_fit_sbi(args: argparse.Namespace) -> int:
     from .config import load_config
-    from .fit.sbi_fit import simulate_training_set, train_posterior
+    from .fit.sbi_fit import run_sbi_fit
+    from .fit.task_status import DEFAULT_STATUS_PATH, mark_running
+    from .manifest import record_run
     from .model.params import ModelParams
+    from .model.runner import default_workers
 
     config = load_config(args.config)
     n_sims = args.n_sims or int(config["inference"]["n_simulations"])
@@ -277,18 +293,134 @@ def _cmd_fit_sbi(args: argparse.Namespace) -> int:
             "the posterior will not meet the Task 6 acceptance criterion",
             file=sys.stderr,
         )
+
+    if args.detach:
+        return _detach_sbi(args, config, n_sims)
+
+    started = time.time()
     observed = _load_target_fingerprint(args.data)
     base = ModelParams.load(config["simulator"]["model_config"])
-    theta, fingerprints, _ = simulate_training_set(base, base.prior, n_sims)
-    train_posterior(theta, fingerprints, observed, config)
+    if args.seed is not None:
+        from dataclasses import replace
+
+        base = replace(base, seed=int(args.seed))
+
+    duration_s = float(config["simulator"].get("duration_s", base.simulation.duration_s))
+    mark_running(
+        n_simulations=n_sims,
+        duration_s=duration_s,
+        batch_size=max(default_workers(), 8),
+        out=args.out,
+        log=args.out.with_suffix(".log"),
+        checkpoint=args.out.with_suffix(".checkpoint.npz"),
+        message="foreground run",
+    )
+    result = run_sbi_fit(
+        observed=observed,
+        base=base,
+        config=config,
+        n_simulations=n_sims,
+        out=args.out,
+        status_path=DEFAULT_STATUS_PATH,
+        resume=not args.no_resume,
+    )
+    record_run(
+        command="fit sbi",
+        configs={"fit_sbi": config, "model": base.to_config()},
+        master_seed=base.seed,
+        started_at=started,
+        output=str(args.out),
+        n_simulations=result.n_simulations,
+        n_excluded=result.n_excluded,
+    ).write(args.out.with_suffix(".manifest.json"))
+    print(
+        f"wrote {args.out}  kept={result.n_simulations} excluded={result.n_excluded}  "
+        f"identified={list(result.summary.identified_names())}  "
+        f"unidentified={list(result.summary.unidentified_names())}"
+    )
+    return EXIT_OK
+
+
+def _detach_sbi(args: argparse.Namespace, config: dict[str, Any], n_sims: int) -> int:
+    """Spawn a background SBI worker and return immediately."""
+    import os
+    import subprocess
+
+    from .fit.task_status import mark_running
+    from .model.params import ModelParams
+    from .model.runner import default_workers
+
+    # Fail fast on missing data before detaching.
+    _load_target_fingerprint(args.data)
+
+    out = Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    log_path = out.with_suffix(".log")
+    status_path = Path("output/task6_status.json")
+    base = ModelParams.load(config["simulator"]["model_config"])
+    duration_s = float(config["simulator"].get("duration_s", base.simulation.duration_s))
+
+    culture_sim = Path(sys.executable).resolve().parent / "culture-sim"
+    if not culture_sim.exists():
+        raise FileNotFoundError(
+            f"cannot find culture-sim next to {sys.executable}; is the package installed editable?"
+        )
+    worker_argv = [
+        str(culture_sim),
+        "fit",
+        "sbi",
+        "--data",
+        str(args.data),
+        "--out",
+        str(out),
+        "--config",
+        str(args.config),
+        "--n-sims",
+        str(n_sims),
+    ]
+    if args.seed is not None:
+        worker_argv.extend(["--seed", str(args.seed)])
+    if args.no_resume:
+        worker_argv.append("--no-resume")
+
+    mark_running(
+        n_simulations=n_sims,
+        duration_s=duration_s,
+        batch_size=max(default_workers(), 8),
+        out=out,
+        log=log_path,
+        checkpoint=out.with_suffix(".checkpoint.npz"),
+        message="detached; waiting for worker",
+        path=status_path,
+    )
+
+    log_handle = log_path.open("a", encoding="utf-8")
+    log_handle.write(f"\n--- detach launch {time.strftime('%Y-%m-%dT%H:%M:%S')} ---\n")
+    log_handle.write(" ".join(worker_argv) + "\n")
+    log_handle.flush()
+    process = subprocess.Popen(  # noqa: S603 - argv is built from our CLI
+        worker_argv,
+        stdout=log_handle,
+        stderr=subprocess.STDOUT,
+        start_new_session=True,
+        cwd=str(Path.cwd()),
+        env={**os.environ, "MPLBACKEND": "Agg", "HDF5_USE_FILE_LOCKING": "FALSE"},
+    )
+    print(
+        f"started Task 6 SBI in the background (pid {process.pid})\n"
+        f"  log:    {log_path}\n"
+        f"  status: {status_path}\n"
+        f"  check:  .venv/bin/python scripts/check_task6.py\n"
+        f"The README Task 6 row updates as batches finish; leave the machine alone."
+    )
     return EXIT_OK
 
 
 def _cmd_validate(args: argparse.Namespace) -> int:
-    from .fit.sbi_fit import SBIResult
-
-    # The posterior is the input to all three tests (SPEC §9), so it loads first.
-    SBIResult.load(args.posterior)
+    # Refuse to pretend: Task 7 is not written. Existence of the posterior path is
+    # checked so a typo fails loudly, but we do not load it until the suite exists.
+    if not Path(args.posterior).exists():
+        raise FileNotFoundError(args.posterior)
     raise NotImplementedError("Task 7 (SPEC §9) -- the validation suite")
 
 

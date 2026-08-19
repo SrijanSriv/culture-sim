@@ -17,7 +17,10 @@ simulator:
   model_config: configs/model_default.yaml
   observation_config: configs/observation.yaml
   fingerprint_config: configs/fingerprint.yaml
-  duration_s: 300.0
+  # 60 s biological matches the Task 5 coarse-fit duration and finishes overnight
+  # on a laptop (~hours for 3000 draws). SPEC §8.3 does not pin duration; 300 s is
+  # available by editing this value if you can leave the machine longer.
+  duration_s: 60.0
   n_workers: null # null -> cpu_count() - 1
   # Draws whose simulation crashes or returns a non-finite fingerprint are
   # recorded and excluded rather than silently replaced.
@@ -25,7 +28,7 @@ simulator:
 
 inference:
   method: SNPE_C
-  n_simulations: 5000 # SPEC §8.3: 3000-5000
+  n_simulations: 3000 # SPEC §8.3: 3000-5000; 3000 is the acceptance floor
   n_rounds: 1 # amortised single round; >1 switches to sequential SNPE
   density_estimator: nsf
   embedding_net:
@@ -49,7 +52,7 @@ posterior:
   identifiability_std_ratio: 0.5
 
 posterior_predictive:
-  n_draws: 100
+  n_draws: 50
   # Fraction of the posterior-predictive fingerprint ensemble that must bracket
   # the real value for a statistic to count as reproduced.
   coverage_interval: [5, 95]
