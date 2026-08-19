@@ -55,7 +55,7 @@ The two are complementary, and this is the intended long-term integration path: 
 
 ## Current status
 
-**Tasks 0–2 are complete. Nothing has been fitted, and no claim in `SPEC.md`
+**Tasks 0–3 are complete. Nothing has been fitted, and no claim in `SPEC.md`
 §15 is yet supported by evidence.** The table below is the honest state of the build;
 `SPEC.md` §13 has the acceptance criterion for each task.
 
@@ -65,7 +65,7 @@ The two are complementary, and this is the intended long-term integration path: 
 | 0.5 | CL SDK API probe, license/install check, H5 schema, analysis signatures | **Done** (`culturesim/interop/CL_API_PROBE.md`) |
 | 1 | Brian2 network with Tsodyks–Markram synapses, subprocess runner | **Done** (300 s biological in 53.7 s wall-clock; poisson drive; `dt=0.2` ms) |
 | 2 | Virtual MEA observation model + CL adapter | **Done** (60-vs-1024 figure; dead electrodes; HD-MEA CL stats blocked by `cl-sdk==1.0.0` uint8 channel ids) |
-| 3 | Statistics and the frozen fingerprint | Rates/branching implemented; bursts/avalanches/connectivity delegate through `interop`; fingerprint still draft/unfrozen |
+| 3 | Statistics and the frozen fingerprint | **Done** (66 statistics, version 1.0.0, hash `603d25df56e7`) |
 | 4 | Real data loaders | Access verified (see below); loaders not written |
 | 5 | Coarse fit | Not started |
 | 6 | SBI posterior | Not started |

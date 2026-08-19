@@ -10,9 +10,9 @@
 # procedure is to bump `version` and re-run everything -- `names_sha256` exists
 # so an accidental edit is caught by the test suite rather than by a reviewer.
 
-version: "0.1.0-draft"
-frozen: false
-names_sha256: null # set by `scripts/freeze_fingerprint.py` when frozen: true
+version: "1.0.0"
+frozen: true
+names_sha256: 603d25df56e75289848d69e764a4d5ef74eede671b2c5a97821af7afc171df0e
 
 # Default quantile levels for any distributional statistic (SPEC §6.6).
 default_quantile_levels: [10, 25, 50, 75, 90]

@@ -5,7 +5,6 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from culturesim.config import load_config
 from culturesim.stats.fingerprint import Fingerprint, FingerprintSpec
 
 
@@ -103,9 +102,13 @@ def test_frozen_spec_without_a_hash_is_rejected() -> None:
         FingerprintSpec.from_config(config).check_freeze()
 
 
-def test_shipped_config_is_not_yet_frozen() -> None:
-    """Freezing happens at the end of Task 3, not before (SPEC §13)."""
-    assert load_config("fingerprint.yaml")["frozen"] is False
+def test_shipped_config_is_frozen() -> None:
+    """Task 3 acceptance: the order is frozen and the recorded hash matches."""
+    spec = FingerprintSpec.load("fingerprint.yaml")
+    assert spec.frozen is True
+    assert spec.version == "1.0.0"
+    assert spec.declared_sha256 == spec.names_sha256
+    spec.check_freeze()
 
 
 # -- the Fingerprint container --------------------------------------------

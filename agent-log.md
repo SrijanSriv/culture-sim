@@ -8,6 +8,25 @@ Newest entries at the top.
 
 ---
 
+## 2026-08-19 — Task 3 fingerprint freeze
+
+Agent: Cursor Grok. Branch `main`. SPEC §13 Task 3.
+
+Froze `configs/fingerprint.yaml` at version **1.0.0**, 66 statistics, SHA-256
+`603d25df56e75289848d69e764a4d5ef74eede671b2c5a97821af7afc171df0e`. CI already runs
+`scripts/freeze_fingerprint.py --check`. Adding, removing, or reordering an entry after
+this requires bumping the version and re-running every fit.
+
+§12 tests already passed (naive-estimator subsampling bias included). `cl.analysis`
+imports are confined to `interop/` by `tests/test_reproducibility.py`. Fingerprint
+end-to-end is under 10 s (`test_fingerprint_computes_within_the_time_budget`).
+
+### Still open
+
+1. Task 4: write `load_wagenaar`.
+
+---
+
 ## 2026-08-19 — Task 2 60-vs-1024 figure and geometry fix
 
 Agent: Cursor Grok. Branch `main`. SPEC §13 Task 2.
@@ -40,8 +59,7 @@ recording. pytest: **162 passed**.
 
 ### Still open
 
-1. Task 3: freeze `fingerprint.yaml`.
-2. Task 4: write `load_wagenaar`.
+1. Task 4: write `load_wagenaar`.
 
 ---
 
