@@ -168,28 +168,25 @@ class SpikeRecording:
     # -- persistence (SPEC §12: round-trip must be the identity) -----------
 
     def to_hdf5(self, path: str | Path, *, compression: str | None = "gzip") -> Path:
-        import h5py
+        """Write the recording using the CL recording H5 format.
 
-        path = Path(path)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with h5py.File(path, "w") as handle:
-            group = handle.create_group("spike_recording")
-            group.attrs["schema_version"] = HDF5_SCHEMA_VERSION
-            group.attrs["n_channels"] = self.n_channels
-            group.attrs["duration"] = self.duration
-            group.attrs["source"] = self.source
-            group.attrs["metadata_json"] = json.dumps(self.metadata, sort_keys=True)
-            # Compression is refused by h5py for empty datasets.
-            kwargs = {"compression": compression} if (compression and self.n_spikes) else {}
-            group.create_dataset("times", data=self.times, dtype="f8", **kwargs)
-            group.create_dataset("channels", data=self.channels, dtype="i4", **kwargs)
-        return path
+        ``compression`` is accepted for the legacy API but ignored: the CL SDK writer
+        owns the physical layout of the native on-disk representation.
+        """
+        del compression
+        from ..interop.cl_adapter import to_cl_h5
+
+        return to_cl_h5(self, path)
 
     @classmethod
     def from_hdf5(cls, path: str | Path) -> SpikeRecording:
         import h5py
 
         with h5py.File(Path(path), "r") as handle:
+            if "spikes" in handle and "channel_count" in handle.attrs:
+                from ..interop.cl_adapter import from_cl_h5
+
+                return from_cl_h5(path)
             group = handle["spike_recording"]
             version = int(group.attrs.get("schema_version", -1))
             if version != HDF5_SCHEMA_VERSION:

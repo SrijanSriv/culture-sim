@@ -21,6 +21,7 @@ _LAZY_SUBMODULES = {
     "stats",
     "data",
     "fit",
+    "interop",
     "validate",
     "cli",
     "config",

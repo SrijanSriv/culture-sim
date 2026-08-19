@@ -148,13 +148,14 @@ def test_hdf5_round_trip_is_identity(fixture_name: str, tmp_path, request) -> No
     assert restored.metadata == original.metadata
 
 
-def test_hdf5_rejects_unknown_schema_version(tmp_path, poisson_recording) -> None:
+def test_hdf5_native_write_uses_cl_recording_schema(tmp_path, poisson_recording) -> None:
     h5py = pytest.importorskip("h5py")
     path = poisson_recording.to_hdf5(tmp_path / "recording.h5")
-    with h5py.File(path, "r+") as handle:
-        handle["spike_recording"].attrs["schema_version"] = 99
-    with pytest.raises(ValueError, match="unsupported SpikeRecording schema version"):
-        load_recording(path)
+    with h5py.File(path, "r") as handle:
+        assert "spikes" in handle
+        assert "channel_count" in handle.attrs
+        assert "spike_recording" not in handle
+        assert int(handle.attrs["culture_sim_original_n_channels"]) == poisson_recording.n_channels
 
 
 # -- property-based tests (SPEC §12) --------------------------------------
