@@ -8,6 +8,32 @@ Newest entries at the top.
 
 ---
 
+## 2026-08-21 — Task 6 complete (weak posterior); path A = Task 7 next
+
+Agent: Cursor Grok. Branch `main`. SPEC §13 Task 6 done.
+
+Results (`output/posterior.summary.json`):
+
+- kept **2372** / 3000 attempted (628 excluded)
+- identified: **`rate_bg` only**
+- unidentified: p_conn, w_e, g, tau_m, U, tau_rec, b
+- PPC: **50%** of fingerprint stats in 5–95% band (33/66)
+- rejection sampling hung; finished with **MCMC** (`sample_with: mcmc`)
+
+Honest reading: pipeline OK, model underconstrained at 60 s sim duration.
+Re-fit guidance for Colab/bigger CPU box: `docs/SBI_REFIT.md`.
+
+User chose path A: proceed to Task 7 validation and report failures; defer a
+stronger re-fit to another machine.
+
+### Still open
+
+1. Task 7 validation suite (heldout, cross-culture, perturbation).
+2. Task 8 HTML report.
+3. Optional later: re-fit SBI with longer duration / tighter prior on Colab.
+
+---
+
 ## 2026-08-21 — Task 6 MCMC sampling (rejection hung)
 
 Agent: Cursor Grok. Branch `main`.

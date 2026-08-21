@@ -55,9 +55,10 @@ The two are complementary, and this is the intended long-term integration path: 
 
 ## Current status
 
-**Tasks 0–5 are complete. A coarse point estimate exists; no posterior and no claim
-in `SPEC.md` §15 is yet supported by evidence.** The table below is the honest state
-of the build; `SPEC.md` §13 has the acceptance criterion for each task.
+**Tasks 0–6 are complete.** The SBI posterior exists but is weakly identified
+(only `rate_bg`); Task 7 will report validation honestly. No claim in `SPEC.md`
+§15 is yet supported by evidence. The table below is the honest state of the
+build; `SPEC.md` §13 has the acceptance criterion for each task.
 
 | Task | What it covers | State |
 |---|---|---|
@@ -68,22 +69,42 @@ of the build; `SPEC.md` §13 has the acceptance criterion for each task.
 | 3 | Statistics and the frozen fingerprint | **Done** (66 statistics, version 1.0.0, hash `603d25df56e7`) |
 | 4 | Real data loaders | **Done** (`load_wagenaar`; 1-1-14 yields a complete 66-stat fingerprint; CL vs Wagenaar burst defs disagree — see below) |
 | 5 | Coarse fit | **Done** (distance 4.50 → 1.29, **71%** improvement; landscape in `figures/task5_distance_landscape.png`) |
-| 6 | SBI posterior | Not started |
+| 6 | SBI posterior | **Done** (2372 kept / 3000; identified: `rate_bg` only; PPC bracketed 50% of stats; see below) |
 | 7 | Validation suite | Not started |
 | 8 | HTML report | Not started |
 
-### Results not yet available
+### Results so far
 
-These sections exist so that they are filled in rather than quietly omitted:
-
-- **Which parameters the data identifies** (SPEC §8.3) — requires Task 6. A flat
-  posterior marginal is a finding about what MEA statistics can constrain, and will be
-  reported as such rather than collapsed to a point estimate.
+- **Which parameters the data identifies** (SPEC §8.3) — identified: `rate_bg`;
+  unidentified (flat marginal): `p_conn`, `w_e`, `g`, `tau_m`, `U`, `tau_rec`, `b`.
+  Threshold: posterior std < 0.5 × prior std. `w_e` and `b` sit just above the
+  cutoff (~0.51). A flat marginal is a finding about what MEA statistics can
+  constrain, not a failure of the optimiser.
 - **Held-out statistics** (SPEC §9.1) — requires Task 7.
 - **Cross-culture posterior overlap** (SPEC §9.2) — requires Task 7.
-- **Whether the model predicts evoked responses** (SPEC §9.3) — requires Task 7. This
-  is the test that matters, since every downstream project stimulates the culture. If
-  it fails, that failure gets stated here plainly.
+- **Whether the model predicts evoked responses** (SPEC §9.3) — requires Task 7.
+
+### Why Task 6 is weak (re-fit later on Colab / a bigger box)
+
+The pipeline worked; the science is underpowered. Likely causes, in order:
+
+1. **Duration mismatch** — each sim was **60 s** biological; the Wagenaar target is
+   **~45 min**. Burst/IBI statistics cannot match a long recording from a short window.
+2. **Prior box is huge** — 8D uniform prior; 2372 kept draws barely fill it.
+3. **Rejection sampling hung** — fixed by switching to MCMC (`sample_with: mcmc`).
+4. **Constant fingerprint dims** — some histogram bins were constant across sims
+   (sbi warned); they add noise to the density estimator.
+
+**Faster re-fit checklist** (Colab / cloud GPU is optional; Brian2 is mostly CPU):
+
+- Raise `simulator.duration_s` toward 300 (or at least 120–180).
+- More sims (5000+) **or** a tighter prior around the Task 5 coarse point.
+- Keep MCMC sampling; do not go back to rejection/direct.
+- Parallelise with `n_workers` ≈ CPU count − 1; Colab CPUs help more than GPUs here
+  (the bottleneck is Brian2 `cpp_standalone`, not torch training).
+- Resume from `output/posterior.checkpoint.npz` if you only need to retrain/sample.
+
+Details and commands: `docs/SBI_REFIT.md`.
 
 ### Dataset access is verified
 
