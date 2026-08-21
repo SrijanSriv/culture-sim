@@ -8,7 +8,16 @@ Newest entries at the top.
 
 ---
 
-## 2026-08-20 — Task 6 fire-and-forget SBI
+## 2026-08-21 — Task 6 MCMC sampling (rejection hung)
+
+Agent: Cursor Grok. Branch `main`.
+
+Sims finished 3000/3000 (kept 2372). SNPE training converged (101 epochs).
+Default rejection/direct sampling sat at 0/10000 for >8 min. Stopped the
+worker; switched `configs/fit_sbi.yaml` to `sample_with: mcmc` (2000 draws)
+and re-launch from the existing checkpoint — no Brian2 re-sim.
+
+---
 
 Agent: Cursor Grok. Branch `main`. SPEC §13 Task 6 (machinery; overnight sims).
 

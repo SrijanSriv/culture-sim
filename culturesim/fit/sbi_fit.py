@@ -288,9 +288,7 @@ def train_posterior(
     if theta.shape[0] != fingerprints.shape[0]:
         raise ValueError("theta and fingerprints must have the same number of rows")
     if theta.shape[0] < 50:
-        raise ValueError(
-            f"need at least 50 kept simulations to train SNPE, got {theta.shape[0]}"
-        )
+        raise ValueError(f"need at least 50 kept simulations to train SNPE, got {theta.shape[0]}")
 
     inference_cfg = config.get("inference", {})
     posterior_cfg = config.get("posterior", {})
@@ -333,11 +331,25 @@ def train_posterior(
         max_num_epochs=int(train_cfg.get("max_num_epochs", 500)),
         show_train_summary=True,
     )
-    posterior = inference.build_posterior(density)
+    # Default sbi sampling is rejection/"direct"; on this fingerprint it hung at
+    # 0/10000 accepted draws. MCMC walks the density instead and makes progress.
+    sample_with = str(posterior_cfg.get("sample_with", "mcmc"))
+    mcmc_method = str(posterior_cfg.get("mcmc_method", "slice_np_vectorized"))
+    print(f"sbi: building posterior with sample_with={sample_with!r}", flush=True)
+    posterior = inference.build_posterior(
+        density,
+        sample_with=sample_with,  # type: ignore[arg-type]
+        mcmc_method=mcmc_method,  # type: ignore[arg-type]
+    )
 
     x_o = torch.as_tensor(np.nan_to_num(observed.values, nan=0.0), dtype=torch.float32)
-    n_samples = int(posterior_cfg.get("n_samples", 10_000))
-    samples = posterior.sample((n_samples,), x=x_o).detach().cpu().numpy()
+    n_samples = int(posterior_cfg.get("n_samples", 2_000))
+    print(f"sbi: sampling {n_samples} posterior draws via {sample_with}", flush=True)
+    samples = posterior.sample((n_samples,), x=x_o)
+    if hasattr(samples, "detach"):
+        samples = samples.detach().cpu().numpy()
+    else:
+        samples = np.asarray(samples, dtype=np.float64)
     summary = summarise_posterior(
         samples,
         prior,
@@ -351,7 +363,12 @@ def train_posterior(
         n_excluded=0,
         theta=np.asarray(theta, dtype=np.float64),
         fingerprints=np.asarray(fingerprints, dtype=np.float64),
-        metadata={"n_posterior_samples": n_samples, "method": "SNPE_C"},
+        metadata={
+            "n_posterior_samples": n_samples,
+            "method": "SNPE_C",
+            "sample_with": sample_with,
+            "mcmc_method": mcmc_method if sample_with == "mcmc" else None,
+        },
     )
 
 
@@ -365,9 +382,7 @@ def summarise_posterior(
     mean = samples.mean(axis=0)
     std = samples.std(axis=0, ddof=1)
     prior_std = (prior.high - prior.low) / np.sqrt(12.0)  # uniform
-    quantiles = {
-        q: np.quantile(samples, q, axis=0) for q in (0.05, 0.25, 0.50, 0.75, 0.95)
-    }
+    quantiles = {q: np.quantile(samples, q, axis=0) for q in (0.05, 0.25, 0.50, 0.75, 0.95)}
     corr = np.corrcoef(samples, rowvar=False)
     identified = {
         name: bool(std[i] < std_ratio_threshold * prior_std[i])
@@ -411,9 +426,7 @@ def posterior_predictive_check(
         x_o = torch.as_tensor(
             np.nan_to_num(result.observed_fingerprint.values, nan=0.0), dtype=torch.float32
         )
-        draws_theta = (
-            result.posterior.sample((n_draws,), x=x_o).detach().cpu().numpy()
-        )
+        draws_theta = result.posterior.sample((n_draws,), x=x_o).detach().cpu().numpy()
         free = [FreeParams.from_vector(row) for row in draws_theta]
     except Exception:  # noqa: BLE001 - fall back to training-set rows near the posterior
         free = [FreeParams.from_vector(result.theta[i]) for i in idx]
@@ -474,9 +487,7 @@ def run_sbi_fit(
     duration_s = float(sim_cfg.get("duration_s", base.simulation.duration_s))
     n_workers = sim_cfg.get("n_workers")
     observation_config = load_config(sim_cfg.get("observation_config", "observation.yaml"))
-    fingerprint_spec = FingerprintSpec.load(
-        sim_cfg.get("fingerprint_config", "fingerprint.yaml")
-    )
+    fingerprint_spec = FingerprintSpec.load(sim_cfg.get("fingerprint_config", "fingerprint.yaml"))
     checkpoint = out.with_suffix(".checkpoint.npz")
     log_hint = str(out.with_suffix(".log"))
 
@@ -508,7 +519,7 @@ def run_sbi_fit(
             resume=resume,
         )
         status = read_status(status_path)
-        status.message = "training SNPE-C"
+        status.message = "training SNPE-C (then MCMC sample)"
         write_status(status, status_path)
         sync_readme_task6(status, status_path=status_path)
 

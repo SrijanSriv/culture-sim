@@ -43,7 +43,11 @@ inference:
     max_num_epochs: 500
 
 posterior:
-  n_samples: 10000
+  n_samples: 2000
+  # Rejection/direct sampling hung at 0/10000 on the Wagenaar fingerprint.
+  # MCMC walks the learned density and reports progress.
+  sample_with: mcmc
+  mcmc_method: slice_np_vectorized
   # Report pairwise correlations to expose parameter degeneracies (SPEC §8.3).
   report_pairwise_correlations: true
   # A marginal is called "identified" if its posterior std is below this
@@ -52,7 +56,7 @@ posterior:
   identifiability_std_ratio: 0.5
 
 posterior_predictive:
-  n_draws: 50
+  n_draws: 30
   # Fraction of the posterior-predictive fingerprint ensemble that must bracket
   # the real value for a statistic to count as reproduced.
   coverage_interval: [5, 95]
