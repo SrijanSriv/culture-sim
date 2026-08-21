@@ -421,11 +421,19 @@ def _detach_sbi(args: argparse.Namespace, config: dict[str, Any], n_sims: int) -
 
 
 def _cmd_validate(args: argparse.Namespace) -> int:
-    # Refuse to pretend: Task 7 is not written. Existence of the posterior path is
-    # checked so a typo fails loudly, but we do not load it until the suite exists.
+    from .validate.suite import run_validation, update_readme_validation
+
     if not Path(args.posterior).exists():
         raise FileNotFoundError(args.posterior)
-    raise NotImplementedError("Task 7 (SPEC §9) -- the validation suite")
+    seed = int(args.seed) if args.seed is not None else 0
+    tests = ("all",) if args.test == "all" else (args.test,)
+    report = run_validation(Path(args.posterior), tests=tests, seed=seed)
+    out = Path(args.out)
+    report.save(out)
+    update_readme_validation(report)
+    print(f"wrote {out}", flush=True)
+    # Always exit 0 once the suite has run: SPEC §9 says report failures, not hide them.
+    return EXIT_OK
 
 
 def _cmd_report(args: argparse.Namespace) -> int:

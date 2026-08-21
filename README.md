@@ -55,10 +55,10 @@ The two are complementary, and this is the intended long-term integration path: 
 
 ## Current status
 
-**Tasks 0–6 are complete.** The SBI posterior exists but is weakly identified
-(only `rate_bg`); Task 7 will report validation honestly. No claim in `SPEC.md`
-§15 is yet supported by evidence. The table below is the honest state of the
-build; `SPEC.md` §13 has the acceptance criterion for each task.
+**Tasks 0–7 are complete.** Task 7 ran; all three validation tests **failed**
+(honest report below). No claim in `SPEC.md` §15 is yet supported by evidence.
+The table below is the honest state of the build; `SPEC.md` §13 has the
+acceptance criterion for each task.
 
 | Task | What it covers | State |
 |---|---|---|
@@ -70,7 +70,7 @@ build; `SPEC.md` §13 has the acceptance criterion for each task.
 | 4 | Real data loaders | **Done** (`load_wagenaar`; 1-1-14 yields a complete 66-stat fingerprint; CL vs Wagenaar burst defs disagree — see below) |
 | 5 | Coarse fit | **Done** (distance 4.50 → 1.29, **71%** improvement; landscape in `figures/task5_distance_landscape.png`) |
 | 6 | SBI posterior | **Done** (2372 kept / 3000; identified: `rate_bg` only; PPC bracketed 50% of stats; see below) |
-| 7 | Validation suite | Not started |
+| 7 | Validation suite | **Done (see results)** |
 | 8 | HTML report | Not started |
 
 ### Results so far
@@ -80,9 +80,16 @@ build; `SPEC.md` §13 has the acceptance criterion for each task.
   Threshold: posterior std < 0.5 × prior std. `w_e` and `b` sit just above the
   cutoff (~0.51). A flat marginal is a finding about what MEA statistics can
   constrain, not a failure of the optimiser.
-- **Held-out statistics** (SPEC §9.1) — requires Task 7.
-- **Cross-culture posterior overlap** (SPEC §9.2) — requires Task 7.
-- **Whether the model predicts evoked responses** (SPEC §9.3) — requires Task 7.
+- **Held-out statistics** (SPEC §9.1) — **FAIL**. Rates+bursts-only Nelder–Mead
+  (8 evals, 60 s) left avalanches undefined (sentinel z=5) and only **19%** of
+  held-out scalars within |z|<2. Details: `output/validation.json`.
+- **Cross-culture posterior overlap** (SPEC §9.2) — **FAIL / incomplete**. Only
+  culture A (1-1-14) has an SBI posterior; culture B needs its own fit (same
+  bottleneck as a Colab re-fit — see `docs/SBI_REFIT.md`).
+- **Whether the model predicts evoked responses** (SPEC §9.3) — **FAIL**. Short
+  stim sim produced **0 electrode spikes**; Wagenaar stim file (2800 pulses)
+  shows clear evoked structure. Model does not predict the evoked response under
+  the spontaneous-fit parameters.
 
 ### Why Task 6 is weak (re-fit later on Colab / a bigger box)
 

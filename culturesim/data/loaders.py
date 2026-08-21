@@ -266,8 +266,10 @@ def load_wagenaar(path: str | Path | None = None, **kwargs: Any) -> SpikeRecordi
       ``{full,simple-text,simple-matlab}/{daily,night}/{spont,stim}/{dense,small,sparse,smsp,ulsp}/{plating}-{culture}-{div}.ext``.
       ``simple-text`` is the right entry point: one recording is under 1 MB and the whole
       compact set is ~4 GB, against ~45 GB for full waveforms.
-    * ``.spk.txt.bz2`` -- two whitespace-separated columns, ``time_seconds channel``,
-      channels 0-59. Threshold crossings, multi-unit, **not** sorted.
+    * ``.spk.txt.bz2`` -- whitespace-separated columns starting with
+      ``time_seconds channel``; spontaneous compact files are two columns,
+      stimulated files add further columns (flag, amplitude). Channels 0-59.
+      Threshold crossings, multi-unit, **not** sorted.
     * ``.spike.gz`` -- binary: 8-byte time, then int16 channel, height, width,
       ``context[74]``, threshold. Context spans -1 ms to +2 ms around the peak.
     * 25 kHz sampling (40 us period); amplitude LSB 0.3335 uV.
@@ -350,9 +352,13 @@ def _read_wagenaar_text(path: Path) -> tuple[np.ndarray, np.ndarray]:
     if raw.size == 0:
         return np.array([], dtype=np.float64), np.array([], dtype=np.int32)
     if raw.ndim == 1:
-        raw = raw.reshape(1, 2)
-    if raw.shape[1] != 2:
-        raise ValueError(f"{path} expected two columns (time_seconds, channel), got {raw.shape}")
+        raw = raw.reshape(1, -1)
+    if raw.shape[1] < 2:
+        raise ValueError(
+            f"{path} expected at least two columns (time_seconds, channel), got {raw.shape}"
+        )
+    # Spontaneous compact files are (time, channel). Stimulated files add extra
+    # columns (e.g. flag, amplitude_uV); electrode identity is still column 1.
     times = np.asarray(raw[:, 0], dtype=np.float64)
     channels = np.asarray(np.rint(raw[:, 1]), dtype=np.int32)
     order = np.argsort(times, kind="stable")

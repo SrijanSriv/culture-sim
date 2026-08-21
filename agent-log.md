@@ -8,6 +8,31 @@ Newest entries at the top.
 
 ---
 
+## 2026-08-21 — Task 7 validation suite (all three FAIL)
+
+Agent: Cursor Grok. Branch `main`. SPEC §13 Task 7.
+
+Implemented `culturesim/validate/{heldout,cross_culture,perturbation,suite}.py`
+and wired `culture-sim validate`. Unit tests in `tests/test_validate.py`.
+
+Measured run (`output/validation.json`, ~4 min after scale fingerprints):
+
+1. **Held-out** FAIL — rates+bursts Nelder–Mead (8 evals, 60 s): distance 14.3;
+   only **19%** of held-out scalars within |z|<2; avalanches mostly undefined
+   (sentinel z=5).
+2. **Cross-culture** FAIL / incomplete — only culture A posterior; culture B SBI
+   not run (same cost class as Colab re-fit).
+3. **Perturbation** FAIL — 30 s stim protocol → **0 electrode spikes**; Wagenaar
+   stim under `data/raw/wagenaar2006/stim/` has 2800 pulses. Loader accepts
+   4-column stim files.
+
+### Still open
+
+1. Task 8 HTML report.
+2. Optional: culture-B SBI + longer-duration re-fit; debug silent stim sim.
+
+---
+
 ## 2026-08-21 — Task 6 complete (weak posterior); path A = Task 7 next
 
 Agent: Cursor Grok. Branch `main`. SPEC §13 Task 6 done.
