@@ -69,9 +69,9 @@ is the honest state; `SPEC.md` §13 has the acceptance criterion for each task.
 | 3 | Statistics and the frozen fingerprint | **Done** (66 statistics, version 1.0.0, hash `603d25df56e7`) |
 | 4 | Real data loaders | **Done** (`load_wagenaar`; 1-1-14 yields a complete 66-stat fingerprint; CL vs Wagenaar burst defs disagree — see below) |
 | 5 | Coarse fit | **Done** (distance 4.50 → 1.29, **71%** improvement; landscape in `figures/task5_distance_landscape.png`) |
-| 6 | SBI posterior | **Done** (2372 kept / 3000; identified: `rate_bg` only; PPC bracketed 50% of stats; see below) |
+| 6 | SBI posterior | **Done** (2372 sims; identified: rate_bg; unidentified: p_conn, w_e, g, tau_m, U, tau_rec, b) |
 | 7 | Validation suite | **Done (see results)** |
-| 8 | HTML report | **Done** (`culture-sim report --out report.html`) |
+| 8 | HTML report | **Done** (`culture-sim report` → `reports/`) |
 
 ### Results so far
 
@@ -193,6 +193,16 @@ Sims use 60 s biological time per draw (same as Task 5; edit
 minutes. A killed run resumes from `output/posterior.checkpoint.npz` unless you
 pass `--no-resume`.
 
+### HTML report (Task 8)
+
+```
+$ .venv/bin/culture-sim report --label first-fit
+```
+
+Writes a timestamped snapshot under `reports/`, refreshes `reports/latest.html`,
+and appends a line to `reports/history.jsonl`. HTML files are gitignored; the
+folder layout is documented in `reports/README.md`.
+
 ---
 
 ## Install
@@ -234,7 +244,7 @@ culture-sim fingerprint --input run.h5 --out fp.json
 culture-sim fit coarse   --data <dataset> --out coarse.json
 culture-sim fit sbi      --data <dataset> --n-sims 5000 --out posterior.pkl
 culture-sim validate     --posterior posterior.pkl --test all
-culture-sim report       --out report.html
+culture-sim report
 ```
 
 Commands whose task has not landed exit with code 3 and an explanatory message. That

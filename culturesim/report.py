@@ -21,10 +21,46 @@ import numpy as np
 from .config import REPO_ROOT
 from .manifest import git_commit, package_versions
 
-__all__ = ["ReportInputs", "gather_report_inputs", "write_report", "load_scope_markdown"]
+__all__ = [
+    "ReportInputs",
+    "DEFAULT_REPORT_DIR",
+    "archive_report_path",
+    "gather_report_inputs",
+    "load_scope_markdown",
+    "write_report",
+]
 
 DEFAULT_ARTEFACT_DIR = REPO_ROOT / "output"
 DEFAULT_FIGURE_DIR = REPO_ROOT / "figures"
+# Cwd-relative so `culture-sim report` from a checkout (or a test workspace) archives
+# next to the caller rather than always under the package install root.
+DEFAULT_REPORT_DIR = Path("reports")
+HISTORY_NAME = "history.jsonl"
+LATEST_NAME = "latest.html"
+
+
+def archive_report_path(
+    *,
+    label: str | None = None,
+    when: datetime | None = None,
+    report_dir: Path | None = None,
+) -> Path:
+    """Timestamped path under ``reports/`` for a new historical entry."""
+    report_dir = _resolve_report_dir(report_dir)
+    when = when or datetime.now(UTC)
+    stamp = when.strftime("%Y-%m-%dT%H%M%SZ")
+    slug = _slugify(label) if label else "report"
+    return report_dir / f"{stamp}_{slug}.html"
+
+
+def _resolve_report_dir(report_dir: Path | None) -> Path:
+    path = Path(report_dir) if report_dir is not None else DEFAULT_REPORT_DIR
+    return path if path.is_absolute() else Path.cwd() / path
+
+
+def _slugify(label: str) -> str:
+    slug = re.sub(r"[^a-zA-Z0-9._-]+", "-", label.strip().lower()).strip("-")
+    return slug[:60] or "report"
 
 
 def load_scope_markdown() -> str:
@@ -108,15 +144,25 @@ def gather_report_inputs(
 
 
 def write_report(
-    out: Path,
+    out: Path | None = None,
     *,
     artefact_dir: Path | None = None,
     figure_dir: Path | None = None,
     posterior: Path | None = None,
     regenerate_posterior_figures: bool = True,
+    label: str | None = None,
+    report_dir: Path | None = None,
+    update_latest: bool = True,
+    record_history: bool = True,
 ) -> Path:
-    """Build the HTML report and write it to ``out``."""
-    out = Path(out)
+    """Build the HTML report and write it to ``out``.
+
+    When ``out`` is omitted, a timestamped file is written under ``reports/``
+    (see :func:`archive_report_path`). A copy is also written to
+    ``reports/latest.html``, and one line is appended to ``reports/history.jsonl``.
+    """
+    report_dir = _resolve_report_dir(report_dir)
+    out = Path(out) if out is not None else archive_report_path(label=label, report_dir=report_dir)
     inputs = gather_report_inputs(
         artefact_dir=artefact_dir,
         figure_dir=figure_dir,
@@ -144,7 +190,37 @@ def write_report(
     document = render_html(inputs)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(document, encoding="utf-8")
+
+    if update_latest and _is_under(out, report_dir):
+        latest = report_dir / LATEST_NAME
+        latest.write_text(document, encoding="utf-8")
+
+    if record_history and _is_under(out, report_dir):
+        _append_history(
+            report_dir / HISTORY_NAME,
+            {
+                "written_at": datetime.now(UTC).isoformat(),
+                "path": str(out.relative_to(REPO_ROOT)) if _is_under(out, REPO_ROOT) else str(out),
+                "label": label,
+                "git_commit": git_commit(),
+                "missing_artefacts": list(inputs.missing),
+            },
+        )
     return out
+
+
+def _is_under(path: Path, root: Path) -> bool:
+    try:
+        path.resolve().relative_to(root.resolve())
+        return True
+    except ValueError:
+        return False
+
+
+def _append_history(path: Path, entry: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(entry, sort_keys=True) + "\n")
 
 
 def render_html(inputs: ReportInputs) -> str:
@@ -271,7 +347,9 @@ footer {{
 {body}
 </main>
 <footer>
-  Regenerated with <span class="mono">culture-sim report --out report.html</span>.
+  Regenerated with
+  <span class="mono">culture-sim report</span>
+  (archived under <span class="mono">reports/</span>).
   Artefacts under <span class="mono">output/</span>;
   figures under <span class="mono">figures/</span>.
 </footer>

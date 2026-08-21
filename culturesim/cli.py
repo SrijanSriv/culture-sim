@@ -125,7 +125,18 @@ def build_parser() -> argparse.ArgumentParser:
 
     # -- report -----------------------------------------------------------
     report = subparsers.add_parser("report", help="regenerate the full HTML report")
-    report.add_argument("--out", type=Path, required=True)
+    report.add_argument(
+        "--out",
+        type=Path,
+        default=None,
+        help="explicit output path; default is reports/<timestamp>_<label>.html",
+    )
+    report.add_argument(
+        "--label",
+        type=str,
+        default=None,
+        help="short slug for the archived filename (default: report)",
+    )
     report.add_argument(
         "--posterior",
         type=Path,
@@ -421,13 +432,18 @@ def _detach_sbi(args: argparse.Namespace, config: dict[str, Any], n_sims: int) -
 
 
 def _cmd_validate(args: argparse.Namespace) -> int:
+    import pickle
+
     from .validate.suite import run_validation, update_readme_validation
 
     if not Path(args.posterior).exists():
         raise FileNotFoundError(args.posterior)
     seed = int(args.seed) if args.seed is not None else 0
     tests = ("all",) if args.test == "all" else (args.test,)
-    report = run_validation(Path(args.posterior), tests=tests, seed=seed)
+    try:
+        report = run_validation(Path(args.posterior), tests=tests, seed=seed)
+    except (OSError, pickle.UnpicklingError, TypeError) as exc:
+        raise ValueError(f"could not load posterior {args.posterior}: {exc}") from exc
     out = Path(args.out)
     report.save(out)
     update_readme_validation(report)
@@ -440,8 +456,9 @@ def _cmd_report(args: argparse.Namespace) -> int:
     from .report import write_report
 
     out = write_report(
-        Path(args.out),
+        Path(args.out) if args.out is not None else None,
         posterior=Path(args.posterior) if args.posterior is not None else None,
+        label=args.label,
     )
     print(f"wrote {out}", flush=True)
     return EXIT_OK

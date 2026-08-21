@@ -70,6 +70,48 @@ def test_write_report_from_fixture_artefacts(tmp_path: Path):
     assert (figures / "task6_posterior_marginals.png").exists()
 
 
+def test_write_report_archives_under_reports_dir(tmp_path: Path):
+    from culturesim.report import write_report
+
+    artefact = tmp_path / "output"
+    figures = tmp_path / "figures"
+    reports = tmp_path / "reports"
+    artefact.mkdir()
+    figures.mkdir()
+    (artefact / "posterior.summary.json").write_text(
+        json.dumps(
+            {
+                "summary": {
+                    "names": ["rate_bg"],
+                    "mean": [4.0],
+                    "std": [1.0],
+                    "prior_std": [5.0],
+                    "identified": {"rate_bg": True},
+                    "correlations": [[1.0]],
+                },
+                "identified": ["rate_bg"],
+                "unidentified": [],
+                "n_simulations": 3,
+                "n_excluded": 0,
+            }
+        ),
+        encoding="utf-8",
+    )
+    out = write_report(
+        artefact_dir=artefact,
+        figure_dir=figures,
+        report_dir=reports,
+        label="milestone",
+        regenerate_posterior_figures=False,
+    )
+    assert out.parent == reports
+    assert "milestone" in out.name
+    assert (reports / "latest.html").exists()
+    history = (reports / "history.jsonl").read_text(encoding="utf-8").strip().splitlines()
+    assert len(history) == 1
+    assert "milestone" in history[0]
+
+
 def test_gather_report_inputs_notes_missing(tmp_path: Path):
     inputs = gather_report_inputs(artefact_dir=tmp_path, figure_dir=tmp_path)
     assert "posterior.summary.json" in inputs.missing

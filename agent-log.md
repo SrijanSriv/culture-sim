@@ -8,6 +8,21 @@ Newest entries at the top.
 
 ---
 
+## 2026-08-21 — reports/ archive for HTML history
+
+Agent: Cursor Grok. Branch `main`.
+
+`culture-sim report` now defaults to `reports/<timestamp>_<label>.html`,
+refreshes `reports/latest.html`, and appends `reports/history.jsonl`.
+Tracked: `reports/README.md`. Gitignored: `reports/*.html`, history log.
+Root `report.html` migrated into the archive as `first-fit-task8`.
+
+### Still open
+
+1. Optional stronger SBI re-fit / culture-B / stim debug.
+
+---
+
 ## 2026-08-21 — Task 8 HTML report
 
 Agent: Cursor Grok. Branch `main`. SPEC §13 Task 8 / §15.

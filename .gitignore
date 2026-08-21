@@ -26,6 +26,9 @@ cpp_standalone/
 *.pkl
 *.manifest.json
 report.html
+reports/*.html
+reports/history.jsonl
+!reports/README.md
 figures/
 
 # Real datasets are large and often licence-restricted; never commit them.

@@ -93,7 +93,7 @@ def cli_workspace(tmp_path, monkeypatch, poisson_recording):
         ["fit", "coarse", "--data", "wagenaar2006", "--out", "coarse.json"],
         ["fit", "sbi", "--data", "wagenaar2006", "--n-sims", "3000", "--out", "posterior.pkl"],
         ["validate", "--posterior", "posterior.pkl", "--test", "all"],
-        ["report", "--out", "report.html"],
+        ["report"],
     ],
 )
 def test_documented_invocations_reach_a_handler(argv: list[str], cli_workspace, capsys) -> None:
@@ -114,6 +114,14 @@ def test_documented_invocations_reach_a_handler(argv: list[str], cli_workspace, 
         # Wagenaar loader / scale requirements fail without data/raw (exit 1).
         assert exit_code == EXIT_FAILED
         assert "error:" in capsys.readouterr().err
+    elif argv[0] == "validate":
+        # Stub posterior.pkl is not a real SBIResult.
+        assert exit_code == EXIT_FAILED
+        assert "error:" in capsys.readouterr().err
+    elif argv[0] == "report":
+        # Task 8 writes from whatever artefacts exist (may note missing files).
+        assert exit_code == EXIT_OK
+        assert "wrote" in capsys.readouterr().out
     else:
         assert exit_code == EXIT_NOT_IMPLEMENTED
         assert "not implemented" in capsys.readouterr().err
