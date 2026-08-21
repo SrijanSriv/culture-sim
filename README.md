@@ -55,10 +55,10 @@ The two are complementary, and this is the intended long-term integration path: 
 
 ## Current status
 
-**Tasks 0–7 are complete.** Task 7 ran; all three validation tests **failed**
-(honest report below). No claim in `SPEC.md` §15 is yet supported by evidence.
-The table below is the honest state of the build; `SPEC.md` §13 has the
-acceptance criterion for each task.
+**Tasks 0–8 are complete as a first end-to-end build.** Validation failed
+honestly; the HTML report states limits rather than claiming readiness. No claim
+in `SPEC.md` §15 is yet supported as a *validated* test bench. The table below
+is the honest state; `SPEC.md` §13 has the acceptance criterion for each task.
 
 | Task | What it covers | State |
 |---|---|---|
@@ -71,7 +71,7 @@ acceptance criterion for each task.
 | 5 | Coarse fit | **Done** (distance 4.50 → 1.29, **71%** improvement; landscape in `figures/task5_distance_landscape.png`) |
 | 6 | SBI posterior | **Done** (2372 kept / 3000; identified: `rate_bg` only; PPC bracketed 50% of stats; see below) |
 | 7 | Validation suite | **Done (see results)** |
-| 8 | HTML report | Not started |
+| 8 | HTML report | **Done** (`culture-sim report --out report.html`) |
 
 ### Results so far
 

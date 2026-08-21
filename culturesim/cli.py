@@ -437,7 +437,14 @@ def _cmd_validate(args: argparse.Namespace) -> int:
 
 
 def _cmd_report(args: argparse.Namespace) -> int:
-    raise NotImplementedError("Task 8 (SPEC §10, §15) -- `culture-sim report`")
+    from .report import write_report
+
+    out = write_report(
+        Path(args.out),
+        posterior=Path(args.posterior) if args.posterior is not None else None,
+    )
+    print(f"wrote {out}", flush=True)
+    return EXIT_OK
 
 
 def main(argv: Sequence[str] | None = None) -> int:

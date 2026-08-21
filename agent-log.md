@@ -8,6 +8,25 @@ Newest entries at the top.
 
 ---
 
+## 2026-08-21 — Task 8 HTML report
+
+Agent: Cursor Grok. Branch `main`. SPEC §13 Task 8 / §15.
+
+`culturesim/report.py` + `culture-sim report --out report.html`. Scope text is
+loaded verbatim from `SPEC.md` §0. Embeds figures as base64; regenerates
+posterior marginal/correlation PNGs from `posterior.summary.json`.
+
+First report written (~398 KB). States: identified `rate_bg` only; all three
+validation tests FAIL; model does not predict evoked responses; not valid for
+§0 non-goals. Tests: `tests/test_report.py`.
+
+### Still open
+
+1. Stronger SBI re-fit (Colab / longer duration) — optional path B.
+2. Culture-B posterior for cross-culture; debug silent stim sim.
+
+---
+
 ## 2026-08-21 — Task 7 validation suite (all three FAIL)
 
 Agent: Cursor Grok. Branch `main`. SPEC §13 Task 7.

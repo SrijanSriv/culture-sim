@@ -23,6 +23,7 @@ _LAZY_SUBMODULES = {
     "fit",
     "interop",
     "validate",
+    "report",
     "cli",
     "config",
     "manifest",
